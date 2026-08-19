@@ -1,0 +1,696 @@
+generator client {
+  provider     = "prisma-client"
+  output       = "../../src/generated/tenant-client"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// Every model in this schema is replicated identically into every tenant's
+// own Postgres schema (tenant_acme, tenant_beta, ...). The Postgres schema
+// itself is the isolation boundary — see docs/database-design.md §1a.
+// tenant_id is kept only as defense-in-depth / for future cross-schema admin
+// tooling, never as the primary means of scoping a query.
+
+enum UserStatus {
+  ACTIVE
+  DISABLED
+}
+
+// Fixed set of predefined roles for Phase 1 (docs/requirements-qa.md "Roles &
+// Permissions") — no tenant-defined custom roles/permission matrix yet.
+// MANAGER exists specifically because several approval workflows (PO
+// approval, inventory adjustments, stock transfers) are scoped to
+// "Owner / Manager" in the Q&A.
+enum Role {
+  OWNER
+  ADMIN
+  MANAGER
+  INVENTORY_MANAGER
+  SALES_CASHIER
+  ACCOUNTANT
+  VIEWER
+}
+
+model User {
+  id           String     @id @default(uuid()) @db.Uuid
+  tenantId     String     @map("tenant_id") @db.Uuid
+  name         String
+  email        String     @unique
+  phone        String?
+  passwordHash String     @map("password_hash")
+  role         Role       @default(OWNER)
+  status       UserStatus @default(ACTIVE)
+  lastLoginAt  DateTime?  @map("last_login_at")
+  createdAt    DateTime   @default(now()) @map("created_at")
+  updatedAt    DateTime   @updatedAt @map("updated_at")
+
+  refreshTokens RefreshToken[]
+
+  @@map("users")
+}
+
+model RefreshToken {
+  id         String    @id @default(uuid()) @db.Uuid
+  userId     String    @map("user_id") @db.Uuid
+  tokenHash  String    @unique @map("token_hash")
+  expiresAt  DateTime  @map("expires_at")
+  revokedAt  DateTime? @map("revoked_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("refresh_tokens")
+}
+
+model Customer {
+  id            String   @id @default(uuid()) @db.Uuid
+  tenantId      String   @map("tenant_id") @db.Uuid
+  customerCode  String   @map("customer_code")
+  name          String
+  email         String?
+  phone         String?
+  address       String?
+  taxNumber     String?  @map("tax_number")
+  creditLimit   Decimal? @map("credit_limit") @db.Decimal(14, 2)
+  openingBalance Decimal @default(0) @map("opening_balance") @db.Decimal(14, 2)
+  status        String   @default("ACTIVE")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@unique([customerCode])
+  @@map("customers")
+}
+
+// --- Inventory ---------------------------------------------------------
+// Scope decision (v1): no product variants and no bin-level warehouse
+// locations yet — every SRS field for those exists but isn't load-bearing
+// for anything built so far. Add them when a real feature needs them rather
+// than up front.
+
+enum ProductStatus {
+  ACTIVE
+  INACTIVE
+}
+
+model ProductCategory {
+  id       String  @id @default(uuid()) @db.Uuid
+  tenantId String  @map("tenant_id") @db.Uuid
+  name     String
+  parentId String? @map("parent_id") @db.Uuid
+
+  parent   ProductCategory?  @relation("CategoryParent", fields: [parentId], references: [id])
+  children ProductCategory[] @relation("CategoryParent")
+  products Product[]
+
+  @@map("product_categories")
+}
+
+model Unit {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @map("tenant_id") @db.Uuid
+  name     String
+  symbol   String
+
+  products Product[]
+
+  @@map("units")
+}
+
+model Product {
+  id           String        @id @default(uuid()) @db.Uuid
+  tenantId     String        @map("tenant_id") @db.Uuid
+  categoryId   String?       @map("category_id") @db.Uuid
+  unitId       String?       @map("unit_id") @db.Uuid
+  sku          String
+  barcode      String?
+  name         String
+  description  String?
+  costPrice    Decimal       @default(0) @map("cost_price") @db.Decimal(14, 4)
+  sellingPrice Decimal       @default(0) @map("selling_price") @db.Decimal(14, 2)
+  taxRate      Decimal       @default(0) @map("tax_rate") @db.Decimal(5, 2)
+  reorderLevel Decimal       @default(0) @map("reorder_level") @db.Decimal(14, 2)
+  trackBatch   Boolean       @default(false) @map("track_batch")
+  status       ProductStatus @default(ACTIVE)
+  createdAt    DateTime      @default(now()) @map("created_at")
+  updatedAt    DateTime      @updatedAt @map("updated_at")
+
+  category       ProductCategory? @relation(fields: [categoryId], references: [id])
+  unit           Unit?            @relation(fields: [unitId], references: [id])
+  stockBalances  StockBalance[]
+  stockMovements StockMovement[]
+  batches        Batch[]
+
+  @@unique([sku])
+  @@map("products")
+}
+
+model Warehouse {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @map("tenant_id") @db.Uuid
+  name     String
+  code     String
+  address  String?
+  status   String @default("ACTIVE")
+
+  stockBalances  StockBalance[]
+  stockMovements StockMovement[]
+  batches        Batch[]
+
+  @@unique([code])
+  @@map("warehouses")
+}
+
+// Batch quantity is a live running balance (mirrors StockBalance but scoped
+// to one batch), so FEFO selection can read remaining-per-batch directly
+// without re-deriving it from the movement ledger on every issue.
+model Batch {
+  id              String    @id @default(uuid()) @db.Uuid
+  productId       String    @map("product_id") @db.Uuid
+  warehouseId     String    @map("warehouse_id") @db.Uuid
+  batchNumber     String    @map("batch_number")
+  manufactureDate DateTime? @map("manufacture_date") @db.Date
+  expiryDate      DateTime? @map("expiry_date") @db.Date
+  quantity        Decimal   @default(0) @db.Decimal(14, 3)
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  product   Product   @relation(fields: [productId], references: [id])
+  warehouse Warehouse @relation(fields: [warehouseId], references: [id])
+
+  @@map("batches")
+}
+
+model StockBalance {
+  id               String  @id @default(uuid()) @db.Uuid
+  tenantId         String  @map("tenant_id") @db.Uuid
+  warehouseId      String  @map("warehouse_id") @db.Uuid
+  productId        String  @map("product_id") @db.Uuid
+  quantity         Decimal @default(0) @db.Decimal(14, 3)
+  reservedQuantity Decimal @default(0) @map("reserved_quantity") @db.Decimal(14, 3)
+  averageCost      Decimal @default(0) @map("average_cost") @db.Decimal(14, 4)
+
+  warehouse Warehouse @relation(fields: [warehouseId], references: [id])
+  product   Product   @relation(fields: [productId], references: [id])
+
+  @@unique([warehouseId, productId])
+  @@map("stock_balances")
+}
+
+enum StockMovementType {
+  PURCHASE_RECEIPT
+  SALE
+  SALES_RETURN
+  PURCHASE_RETURN
+  TRANSFER_OUT
+  TRANSFER_IN
+  ADJUSTMENT
+  OPENING
+  DAMAGE
+  EXPIRY
+  MANUAL_ISSUE
+}
+
+// quantity is signed uniformly across every movement type: positive = into
+// the warehouse, negative = out of it. This avoids needing a separate
+// direction lookup keyed on movementType.
+model StockMovement {
+  id            String            @id @default(uuid()) @db.Uuid
+  tenantId      String            @map("tenant_id") @db.Uuid
+  warehouseId   String            @map("warehouse_id") @db.Uuid
+  productId     String            @map("product_id") @db.Uuid
+  batchId       String?           @map("batch_id") @db.Uuid
+  movementType  StockMovementType @map("movement_type")
+  quantity      Decimal           @db.Decimal(14, 3)
+  unitCost      Decimal           @map("unit_cost") @db.Decimal(14, 4)
+  referenceType String?           @map("reference_type")
+  referenceId   String?           @map("reference_id") @db.Uuid
+  movementDate  DateTime          @default(now()) @map("movement_date")
+  createdBy     String?           @map("created_by") @db.Uuid
+
+  warehouse Warehouse @relation(fields: [warehouseId], references: [id])
+  product   Product   @relation(fields: [productId], references: [id])
+
+  @@map("stock_movements")
+}
+
+// Per docs/requirements-qa.md: transfers follow Request → Approve → Dispatch
+// → Receive, not a single direct move. Stock leaves the source warehouse at
+// Dispatch (creating a TRANSFER_OUT movement) and only lands in the
+// destination warehouse at Receive (TRANSFER_IN) — the gap between those two
+// events is what makes lost/short/delayed transfers visible.
+enum StockTransferStatus {
+  PENDING
+  APPROVED
+  DISPATCHED
+  RECEIVED
+  CANCELLED
+}
+
+model StockTransfer {
+  id              String              @id @default(uuid()) @db.Uuid
+  tenantId        String              @map("tenant_id") @db.Uuid
+  fromWarehouseId String              @map("from_warehouse_id") @db.Uuid
+  toWarehouseId   String              @map("to_warehouse_id") @db.Uuid
+  status          StockTransferStatus @default(PENDING)
+  requestedBy     String              @map("requested_by") @db.Uuid
+  approvedBy      String?             @map("approved_by") @db.Uuid
+  dispatchedAt    DateTime?           @map("dispatched_at")
+  receivedAt      DateTime?           @map("received_at")
+  createdAt       DateTime            @default(now()) @map("created_at")
+
+  items StockTransferItem[]
+
+  @@map("stock_transfers")
+}
+
+model StockTransferItem {
+  id              String  @id @default(uuid()) @db.Uuid
+  stockTransferId String  @map("stock_transfer_id") @db.Uuid
+  productId       String  @map("product_id") @db.Uuid
+  quantity        Decimal @db.Decimal(14, 3)
+  // Captured from the source warehouse's average cost at Dispatch time, so
+  // Receive can value the incoming stock correctly even though the two
+  // events may happen far apart. 0 until dispatched.
+  unitCost        Decimal @default(0) @map("unit_cost") @db.Decimal(14, 4)
+
+  stockTransfer StockTransfer @relation(fields: [stockTransferId], references: [id])
+
+  @@map("stock_transfer_items")
+}
+
+// --- Accounting integration events --------------------------------------
+// Phase 1 decision (docs/requirements-qa.md "Accounting Integration"): POS,
+// Invoice, and Inventory transactions create structured integration events
+// here rather than full double-entry journal entries. Each event carries
+// everything a journal entry will eventually need, so full automatic
+// journal generation (Chart of Accounts, debit/credit lines, GL posting —
+// docs/database-design.md §20) can later be built as a pure transform over
+// this table instead of a schema change.
+model AccountingEvent {
+  id            String   @id @default(uuid()) @db.Uuid
+  tenantId      String   @map("tenant_id") @db.Uuid
+  eventType     String   @map("event_type")
+  referenceType String   @map("reference_type")
+  referenceId   String   @map("reference_id") @db.Uuid
+  amount        Decimal? @db.Decimal(14, 2)
+  taxAmount     Decimal? @map("tax_amount") @db.Decimal(14, 2)
+  currency      String?
+  payload       Json
+  occurredAt    DateTime @default(now()) @map("occurred_at")
+  processed     Boolean  @default(false)
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@map("accounting_events")
+}
+
+// --- Payments (generic, polymorphic — shared across Invoicing/POS/etc,
+// matching docs/database-design.md §13) -----------------------------------
+enum PaymentMethod {
+  CASH
+  CARD
+  BANK
+  MOBILE_PAYMENT
+  CHEQUE
+  OTHER
+}
+
+model Payment {
+  id                   String        @id @default(uuid()) @db.Uuid
+  tenantId             String        @map("tenant_id") @db.Uuid
+  referenceType        String        @map("reference_type")
+  referenceId          String        @map("reference_id") @db.Uuid
+  paymentMethod        PaymentMethod @map("payment_method")
+  amount               Decimal       @db.Decimal(14, 2)
+  currency             String?
+  transactionReference String?       @map("transaction_reference")
+  paymentDate          DateTime      @default(now()) @map("payment_date")
+  status               String        @default("COMPLETED")
+  createdBy            String?       @map("created_by") @db.Uuid
+  createdAt            DateTime      @default(now()) @map("created_at")
+
+  @@map("payments")
+}
+
+// --- Invoicing -------------------------------------------------------------
+// Status is intentionally missing a stored OVERDUE value — per
+// docs/requirements-qa.md, "Overdue" is a computed flag based on due date
+// layered on top of SENT/PARTIALLY_PAID, not a mutually exclusive status.
+enum InvoiceStatus {
+  DRAFT
+  SENT
+  PARTIALLY_PAID
+  PAID
+  CANCELLED
+}
+
+model Invoice {
+  id            String        @id @default(uuid()) @db.Uuid
+  tenantId      String        @map("tenant_id") @db.Uuid
+  customerId    String        @map("customer_id") @db.Uuid
+  invoiceNumber String        @map("invoice_number")
+  invoiceDate   DateTime      @default(now()) @map("invoice_date") @db.Date
+  dueDate       DateTime      @map("due_date") @db.Date
+  subtotal      Decimal       @default(0) @db.Decimal(14, 2)
+  discount      Decimal       @default(0) @db.Decimal(14, 2)
+  tax           Decimal       @default(0) @db.Decimal(14, 2)
+  total         Decimal       @default(0) @db.Decimal(14, 2)
+  paidAmount    Decimal       @default(0) @map("paid_amount") @db.Decimal(14, 2)
+  balanceDue    Decimal       @default(0) @map("balance_due") @db.Decimal(14, 2)
+  status        InvoiceStatus @default(DRAFT)
+  fulfilledAt   DateTime?     @map("fulfilled_at")
+  createdAt     DateTime      @default(now()) @map("created_at")
+  updatedAt     DateTime      @updatedAt @map("updated_at")
+
+  items InvoiceItem[]
+
+  @@unique([invoiceNumber])
+  @@map("invoices")
+}
+
+model InvoiceItem {
+  id          String   @id @default(uuid()) @db.Uuid
+  invoiceId   String   @map("invoice_id") @db.Uuid
+  productId   String?  @map("product_id") @db.Uuid
+  description String
+  quantity    Decimal  @db.Decimal(14, 3)
+  unitPrice   Decimal  @map("unit_price") @db.Decimal(14, 2)
+  discount    Decimal  @default(0) @db.Decimal(14, 2)
+  tax         Decimal  @default(0) @db.Decimal(14, 2)
+  total       Decimal  @db.Decimal(14, 2)
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id])
+
+  @@map("invoice_items")
+}
+
+enum RecurringInvoiceStatus {
+  ACTIVE
+  PAUSED
+  ENDED
+}
+
+model RecurringInvoiceTemplate {
+  id              String                  @id @default(uuid()) @db.Uuid
+  tenantId        String                  @map("tenant_id") @db.Uuid
+  customerId      String                  @map("customer_id") @db.Uuid
+  frequency       String
+  startDate       DateTime                @map("start_date") @db.Date
+  nextInvoiceDate DateTime                @map("next_invoice_date") @db.Date
+  endDate         DateTime?               @map("end_date") @db.Date
+  amount          Decimal                 @db.Decimal(14, 2)
+  description     String
+  autoSend        Boolean                 @default(false) @map("auto_send")
+  status          RecurringInvoiceStatus  @default(ACTIVE)
+  createdAt       DateTime                @default(now()) @map("created_at")
+
+  @@map("recurring_invoice_templates")
+}
+
+// linkedReturn=true triggers an inventory SALES_RETURN receipt for the
+// original invoice's warehouse; refundAmount (if set) means money already
+// paid is being refunded rather than just credited against the balance.
+// See docs/requirements-qa.md "Invoicing".
+model CreditNote {
+  id                String   @id @default(uuid()) @db.Uuid
+  tenantId          String   @map("tenant_id") @db.Uuid
+  customerId        String   @map("customer_id") @db.Uuid
+  invoiceId         String?  @map("invoice_id") @db.Uuid
+  creditNoteNumber  String   @map("credit_note_number")
+  amount            Decimal  @db.Decimal(14, 2)
+  reason            String
+  linkedReturn      Boolean  @default(false) @map("linked_return")
+  refundAmount      Decimal? @map("refund_amount") @db.Decimal(14, 2)
+  status            String   @default("ISSUED")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  @@unique([creditNoteNumber])
+  @@map("credit_notes")
+}
+
+// --- Procurement -----------------------------------------------------------
+// Workflow (docs/system-workflows.md §6, docs/requirements-qa.md):
+// Requisition is skipped for v1 (no real approval-routing need for it yet) —
+// PurchaseOrder → approval (Owner/Manager) → GoodsReceipt (partial supported,
+// increases inventory) → PurchaseInvoice (financial-only, never touches
+// inventory) → Payment.
+
+model Supplier {
+  id             String   @id @default(uuid()) @db.Uuid
+  tenantId       String   @map("tenant_id") @db.Uuid
+  supplierCode   String   @map("supplier_code")
+  name           String
+  email          String?
+  phone          String?
+  address        String?
+  taxNumber      String?  @map("tax_number")
+  openingBalance Decimal  @default(0) @map("opening_balance") @db.Decimal(14, 2)
+  status         String   @default("ACTIVE")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  @@unique([supplierCode])
+  @@map("suppliers")
+}
+
+enum PurchaseOrderStatus {
+  DRAFT
+  PENDING_APPROVAL
+  APPROVED
+  REJECTED
+  CLOSED
+  CANCELLED
+}
+
+model PurchaseOrder {
+  id           String              @id @default(uuid()) @db.Uuid
+  tenantId     String              @map("tenant_id") @db.Uuid
+  supplierId   String              @map("supplier_id") @db.Uuid
+  warehouseId  String              @map("warehouse_id") @db.Uuid
+  poNumber     String              @map("po_number")
+  orderDate    DateTime            @default(now()) @map("order_date") @db.Date
+  expectedDate DateTime?           @map("expected_date") @db.Date
+  subtotal     Decimal             @default(0) @db.Decimal(14, 2)
+  tax          Decimal             @default(0) @db.Decimal(14, 2)
+  discount     Decimal             @default(0) @db.Decimal(14, 2)
+  total        Decimal             @default(0) @db.Decimal(14, 2)
+  status       PurchaseOrderStatus @default(DRAFT)
+  approvedBy   String?             @map("approved_by") @db.Uuid
+  createdAt    DateTime            @default(now()) @map("created_at")
+  updatedAt    DateTime            @updatedAt @map("updated_at")
+
+  items         PurchaseOrderItem[]
+  goodsReceipts GoodsReceipt[]
+
+  @@unique([poNumber])
+  @@map("purchase_orders")
+}
+
+// receivedQuantity is the running total received across every GoodsReceipt
+// against this line — the source of truth for "is this PO fully received."
+model PurchaseOrderItem {
+  id               String  @id @default(uuid()) @db.Uuid
+  purchaseOrderId  String  @map("purchase_order_id") @db.Uuid
+  productId        String  @map("product_id") @db.Uuid
+  quantity         Decimal @db.Decimal(14, 3)
+  receivedQuantity Decimal @default(0) @map("received_quantity") @db.Decimal(14, 3)
+  unitCost         Decimal @map("unit_cost") @db.Decimal(14, 4)
+  tax              Decimal @default(0) @db.Decimal(14, 2)
+  discount         Decimal @default(0) @db.Decimal(14, 2)
+  total            Decimal @db.Decimal(14, 2)
+
+  purchaseOrder PurchaseOrder @relation(fields: [purchaseOrderId], references: [id])
+
+  @@map("purchase_order_items")
+}
+
+model GoodsReceipt {
+  id              String   @id @default(uuid()) @db.Uuid
+  tenantId        String   @map("tenant_id") @db.Uuid
+  purchaseOrderId String   @map("purchase_order_id") @db.Uuid
+  warehouseId     String   @map("warehouse_id") @db.Uuid
+  receiptNumber   String   @map("receipt_number")
+  receiptDate     DateTime @default(now()) @map("receipt_date") @db.Date
+  status          String   @default("COMPLETED")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  purchaseOrder PurchaseOrder      @relation(fields: [purchaseOrderId], references: [id])
+  items         GoodsReceiptItem[]
+
+  @@unique([receiptNumber])
+  @@map("goods_receipts")
+}
+
+model GoodsReceiptItem {
+  id             String  @id @default(uuid()) @db.Uuid
+  goodsReceiptId String  @map("goods_receipt_id") @db.Uuid
+  productId      String  @map("product_id") @db.Uuid
+  quantity       Decimal @db.Decimal(14, 3)
+  batchId        String? @map("batch_id") @db.Uuid
+  unitCost       Decimal @map("unit_cost") @db.Decimal(14, 4)
+
+  goodsReceipt GoodsReceipt @relation(fields: [goodsReceiptId], references: [id])
+
+  @@map("goods_receipt_items")
+}
+
+// Vendor bill — purely financial (Accounts Payable), never independently
+// moves stock. Only the GoodsReceipt increases inventory. See
+// docs/requirements-qa.md "Will a Vendor Bill affect inventory...".
+model PurchaseInvoice {
+  id              String   @id @default(uuid()) @db.Uuid
+  tenantId        String   @map("tenant_id") @db.Uuid
+  supplierId      String   @map("supplier_id") @db.Uuid
+  purchaseOrderId String?  @map("purchase_order_id") @db.Uuid
+  invoiceNumber   String   @map("invoice_number")
+  invoiceDate     DateTime @default(now()) @map("invoice_date") @db.Date
+  dueDate         DateTime @map("due_date") @db.Date
+  subtotal        Decimal  @default(0) @db.Decimal(14, 2)
+  tax             Decimal  @default(0) @db.Decimal(14, 2)
+  discount        Decimal  @default(0) @db.Decimal(14, 2)
+  total           Decimal  @default(0) @db.Decimal(14, 2)
+  paidAmount      Decimal  @default(0) @map("paid_amount") @db.Decimal(14, 2)
+  balanceDue      Decimal  @default(0) @map("balance_due") @db.Decimal(14, 2)
+  status          String   @default("UNPAID")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@unique([invoiceNumber])
+  @@map("purchase_invoices")
+}
+
+// --- POS ---------------------------------------------------------------
+// Every register is bound to exactly one warehouse (docs/requirements-qa.md
+// "will each POS Register be linked to a specific warehouse" → yes) — all
+// sales through it deduct from that warehouse only.
+
+model PosTerminal {
+  id                String   @id @default(uuid()) @db.Uuid
+  tenantId          String   @map("tenant_id") @db.Uuid
+  warehouseId       String   @map("warehouse_id") @db.Uuid
+  name              String
+  code              String
+  deviceIdentifier  String?  @map("device_identifier")
+  status            String   @default("ACTIVE")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  sessions PosSession[]
+
+  @@unique([code])
+  @@map("pos_terminals")
+}
+
+enum PosSessionStatus {
+  OPEN
+  CLOSED
+}
+
+model PosSession {
+  id           String           @id @default(uuid()) @db.Uuid
+  tenantId     String           @map("tenant_id") @db.Uuid
+  terminalId   String           @map("terminal_id") @db.Uuid
+  cashierId    String           @map("cashier_id") @db.Uuid
+  openingCash  Decimal          @map("opening_cash") @db.Decimal(14, 2)
+  closingCash  Decimal?         @map("closing_cash") @db.Decimal(14, 2)
+  expectedCash Decimal?         @map("expected_cash") @db.Decimal(14, 2)
+  variance     Decimal?         @db.Decimal(14, 2)
+  openedAt     DateTime         @default(now()) @map("opened_at")
+  closedAt     DateTime?        @map("closed_at")
+  status       PosSessionStatus @default(OPEN)
+
+  terminal PosTerminal @relation(fields: [terminalId], references: [id])
+
+  @@map("pos_sessions")
+}
+
+enum SaleStatus {
+  COMPLETED
+  PARTIALLY_REFUNDED
+  REFUNDED
+  VOIDED
+}
+
+// deviceId + offlineTransactionKey implement the idempotency rule from
+// docs/database-design.md §33.33 Rule 5 (tenant_id is implicit — the
+// tenant's own Postgres schema). Both are nullable because ordinary
+// online-created sales don't need an idempotency key at all; Postgres
+// treats NULL as distinct in a unique index, so only offline-synced sales
+// (which always supply both) are deduplicated.
+model Sale {
+  id                     String     @id @default(uuid()) @db.Uuid
+  tenantId               String     @map("tenant_id") @db.Uuid
+  warehouseId            String     @map("warehouse_id") @db.Uuid
+  customerId             String?    @map("customer_id") @db.Uuid
+  posSessionId           String?    @map("pos_session_id") @db.Uuid
+  transactionNumber      String     @map("transaction_number")
+  transactionDate        DateTime   @default(now()) @map("transaction_date")
+  subtotal               Decimal    @default(0) @db.Decimal(14, 2)
+  discount               Decimal    @default(0) @db.Decimal(14, 2)
+  tax                    Decimal    @default(0) @db.Decimal(14, 2)
+  total                  Decimal    @default(0) @db.Decimal(14, 2)
+  status                 SaleStatus @default(COMPLETED)
+  deviceId               String?    @map("device_id")
+  offlineTransactionKey  String?    @map("offline_transaction_key")
+  createdAt              DateTime   @default(now()) @map("created_at")
+
+  items   SaleItem[]
+  returns SaleReturn[]
+
+  @@unique([deviceId, offlineTransactionKey])
+  @@unique([transactionNumber])
+  @@map("sales")
+}
+
+model SaleItem {
+  id          String  @id @default(uuid()) @db.Uuid
+  saleId      String  @map("sale_id") @db.Uuid
+  productId   String  @map("product_id") @db.Uuid
+  quantity    Decimal @db.Decimal(14, 3)
+  unitPrice   Decimal @map("unit_price") @db.Decimal(14, 2)
+  discount    Decimal @default(0) @db.Decimal(14, 2)
+  tax         Decimal @default(0) @db.Decimal(14, 2)
+  total       Decimal @db.Decimal(14, 2)
+
+  sale Sale @relation(fields: [saleId], references: [id])
+
+  @@map("sale_items")
+}
+
+// Sellable-condition items automatically restock; damaged items are simply
+// excluded from restocking (quarantined) — a manager writes them off
+// separately via the inventory adjustment flow. See
+// docs/requirements-qa.md "Will returned products automatically be added
+// back to inventory?".
+model SaleReturn {
+  id           String   @id @default(uuid()) @db.Uuid
+  tenantId     String   @map("tenant_id") @db.Uuid
+  saleId       String   @map("sale_id") @db.Uuid
+  warehouseId  String   @map("warehouse_id") @db.Uuid
+  refundAmount Decimal  @map("refund_amount") @db.Decimal(14, 2)
+  reason       String?
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  sale  Sale             @relation(fields: [saleId], references: [id])
+  items SaleReturnItem[]
+
+  @@map("sale_returns")
+}
+
+enum SaleReturnCondition {
+  SELLABLE
+  DAMAGED
+}
+
+model SaleReturnItem {
+  id           String              @id @default(uuid()) @db.Uuid
+  saleReturnId String              @map("sale_return_id") @db.Uuid
+  productId    String              @map("product_id") @db.Uuid
+  quantity     Decimal             @db.Decimal(14, 3)
+  unitPrice    Decimal             @map("unit_price") @db.Decimal(14, 2)
+  condition    SaleReturnCondition
+
+  saleReturn SaleReturn @relation(fields: [saleReturnId], references: [id])
+
+  @@map("sale_return_items")
+}

@@ -1,0 +1,14 @@
+generator client {
+  provider     = "prisma-client"
+  output       = "../../src/generated/spike-client"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Widget {
+  id   Int    @id @default(autoincrement())
+  name String
+}

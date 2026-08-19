@@ -1,0 +1,71 @@
+generator client {
+  provider     = "prisma-client"
+  output       = "../../src/generated/public-client"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum TenantStatus {
+  PROVISIONING
+  ACTIVE
+  SUSPENDED
+  FAILED
+}
+
+// Platform-level registry: which tenant owns which Postgres schema, and how to
+// resolve a tenant from its subdomain. This table lives in the shared `public`
+// schema; the tenant's actual business data lives in `schemaName`, a separate
+// Postgres schema created and migrated at provisioning time.
+model Tenant {
+  id         String       @id @default(uuid()) @db.Uuid
+  name       String
+  legalName  String?      @map("legal_name")
+  email      String
+  phone      String?
+  address    String?
+  country    String?
+  currency   String?
+  timezone   String?
+  taxNumber  String?      @map("tax_number")
+  subdomain  String       @unique
+  schemaName String       @unique @map("schema_name")
+  status     TenantStatus @default(PROVISIONING)
+  createdAt  DateTime     @default(now()) @map("created_at")
+  updatedAt  DateTime     @updatedAt @map("updated_at")
+
+  subscriptions Subscription[]
+
+  @@map("tenants")
+}
+
+model SubscriptionPlan {
+  id           String   @id @default(uuid()) @db.Uuid
+  name         String
+  price        Decimal  @db.Decimal(10, 2)
+  billingCycle String   @map("billing_cycle")
+  baseSeats    Int      @map("base_seats")
+  status       String   @default("ACTIVE")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  subscriptions Subscription[]
+
+  @@map("subscription_plans")
+}
+
+model Subscription {
+  id        String    @id @default(uuid()) @db.Uuid
+  tenantId  String    @map("tenant_id") @db.Uuid
+  planId    String    @map("plan_id") @db.Uuid
+  startDate DateTime  @map("start_date") @db.Date
+  endDate   DateTime? @map("end_date") @db.Date
+  status    String    @default("ACTIVE")
+  autoRenew Boolean   @default(false) @map("auto_renew")
+
+  tenant Tenant           @relation(fields: [tenantId], references: [id])
+  plan   SubscriptionPlan @relation(fields: [planId], references: [id])
+
+  @@map("subscriptions")
+}
