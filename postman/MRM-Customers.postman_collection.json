@@ -6,7 +6,20 @@
   "variable": [
     { "key": "baseUrl", "value": "http://localhost:3000/api/v1" },
     { "key": "accessToken", "value": "" },
-    { "key": "customerId", "value": "" }
+    { "key": "customerId", "value": "" },
+    { "key": "tenantSubdomain", "value": "acme" }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "const subdomain = pm.collectionVariables.get('tenantSubdomain') || pm.environment.get('tenantSubdomain');",
+          "if (subdomain) pm.request.headers.upsert({ key: 'X-Tenant-Subdomain', value: subdomain });"
+        ]
+      }
+    }
   ],
   "auth": {
     "type": "bearer",

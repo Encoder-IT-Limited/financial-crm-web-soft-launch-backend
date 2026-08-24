@@ -7,7 +7,22 @@
     { "key": "baseUrl", "value": "http://localhost:3000/api/v1" },
     { "key": "tenantSubdomain", "value": "acme" },
     { "key": "accessToken", "value": "" },
-    { "key": "refreshToken", "value": "" }
+    { "key": "refreshToken", "value": "" },
+    { "key": "planId", "value": "" }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "const path = pm.request.url.getPath();",
+          "if (path.includes('/auth/signup') || path.endsWith('/plans') || path.includes('/plans')) return;",
+          "const subdomain = pm.collectionVariables.get('tenantSubdomain') || pm.environment.get('tenantSubdomain');",
+          "if (subdomain) pm.request.headers.upsert({ key: 'X-Tenant-Subdomain', value: subdomain });"
+        ]
+      }
+    }
   ],
   "item": [
     {

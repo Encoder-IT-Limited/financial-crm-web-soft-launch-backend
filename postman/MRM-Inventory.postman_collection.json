@@ -11,7 +11,20 @@
     { "key": "productId", "value": "" },
     { "key": "warehouseId", "value": "" },
     { "key": "warehouseId2", "value": "" },
-    { "key": "transferId", "value": "" }
+    { "key": "transferId", "value": "" },
+    { "key": "tenantSubdomain", "value": "acme" }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "const subdomain = pm.collectionVariables.get('tenantSubdomain') || pm.environment.get('tenantSubdomain');",
+          "if (subdomain) pm.request.headers.upsert({ key: 'X-Tenant-Subdomain', value: subdomain });"
+        ]
+      }
+    }
   ],
   "auth": {
     "type": "bearer",
