@@ -1,6 +1,7 @@
 import type { PrismaClient, Prisma } from "../../generated/tenant-client/client";
 import { AppError } from "../../common/errors";
 import { emitAccountingEvent } from "../accounting/accounting.service";
+import { weightedAverageCost } from "./inventory.costing";
 
 type Db = PrismaClient | Prisma.TransactionClient;
 
@@ -105,8 +106,7 @@ export async function receiveStockCore(db: Db, tenantId: string, input: ReceiveS
   });
   const existingQty = existing ? Number(existing.quantity) : 0;
   const existingCost = existing ? Number(existing.averageCost) : 0;
-  const newQty = existingQty + input.quantity;
-  const newAvgCost = newQty > 0 ? (existingQty * existingCost + input.quantity * input.unitCost) / newQty : 0;
+  const { newQty, newAvgCost } = weightedAverageCost(existingQty, existingCost, input.quantity, input.unitCost);
 
   const balance = await upsertStockBalance(
     db,

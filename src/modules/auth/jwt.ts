@@ -3,9 +3,11 @@ import { env } from "../../config/env";
 
 export interface AccessTokenClaims {
   sub: string;
-  tenantId: string;
   email: string;
   role: string;
+  realm: "admin" | "tenant";
+  tenantId?: string;
+  name?: string;
 }
 
 export function signAccessToken(claims: AccessTokenClaims): string {
@@ -18,15 +20,12 @@ export function verifyAccessToken(token: string): AccessTokenClaims {
   return jwt.verify(token, env.JWT_ACCESS_SECRET) as AccessTokenClaims;
 }
 
-// Claims we choose when signing. jwt.sign injects `exp`/`iat` itself from the
-// `expiresIn` option — including `exp` here would conflict with that option.
 export interface RefreshTokenClaims {
   sub: string;
   jti: string;
+  realm: "admin" | "tenant";
 }
 
-// What comes back out of jwt.verify: our claims plus the standard registered
-// claims jsonwebtoken always adds for a token signed with `expiresIn`.
 export type VerifiedRefreshToken = RefreshTokenClaims & { exp: number; iat: number };
 
 export function signRefreshToken(claims: RefreshTokenClaims): string {

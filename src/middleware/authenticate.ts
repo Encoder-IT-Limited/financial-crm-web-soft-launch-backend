@@ -1,37 +1,66 @@
 import type { Request, Response, NextFunction } from "express";
 import { AppError } from "../common/errors";
 import { verifyAccessToken } from "../modules/auth/jwt";
+import { readBearerOrCookie } from "../core/http/cookies";
 
-// Requires tenantResolver to have already run. Verifies the access JWT and
-// confirms its tenantId claim matches the tenant resolved from the
-// subdomain — a token issued on one tenant must never authenticate on
-// another, even if the signature is otherwise valid.
 export function authenticate(req: Request, _res: Response, next: NextFunction) {
   try {
+    attachUser(req);
+    if (req.user?.realm !== "tenant") {
+      throw new AppError(401, "UNAUTHENTICATED", "Tenant session required");
+    }
     if (!req.tenant) {
       throw new AppError(400, "TENANT_REQUIRED", "This endpoint must be called on a tenant subdomain");
     }
-
-    const header = req.headers.authorization;
-    if (!header?.startsWith("Bearer ")) {
-      throw new AppError(401, "UNAUTHENTICATED", "Missing bearer token");
-    }
-    const token = header.slice("Bearer ".length);
-
-    let claims;
-    try {
-      claims = verifyAccessToken(token);
-    } catch {
-      throw new AppError(401, "UNAUTHENTICATED", "Invalid or expired access token");
-    }
-
-    if (claims.tenantId !== req.tenant.id) {
+    if (req.user.tenantId && req.user.tenantId !== req.tenant.id) {
       throw new AppError(401, "UNAUTHENTICATED", "Token does not belong to this tenant");
     }
-
-    req.user = { id: claims.sub, email: claims.email, role: claims.role };
     next();
   } catch (err) {
     next(err);
   }
+}
+
+export function authenticatePlatform(req: Request, _res: Response, next: NextFunction) {
+  try {
+    attachUser(req);
+    if (req.user?.realm !== "admin") {
+      throw new AppError(401, "UNAUTHENTICATED", "Super Admin session required");
+    }
+    next();
+  } catch (err) {
+    next(err);
+  }
+}
+
+export function authenticateAny(req: Request, _res: Response, next: NextFunction) {
+  try {
+    attachUser(req);
+    next();
+  } catch (err) {
+    next(err);
+  }
+}
+
+function attachUser(req: Request) {
+  const token = readBearerOrCookie(req);
+  if (!token) {
+    throw new AppError(401, "UNAUTHENTICATED", "Missing bearer token");
+  }
+
+  let claims;
+  try {
+    claims = verifyAccessToken(token);
+  } catch {
+    throw new AppError(401, "UNAUTHENTICATED", "Invalid or expired access token");
+  }
+
+  req.user = {
+    id: claims.sub,
+    email: claims.email,
+    role: claims.role,
+    realm: claims.realm ?? (claims.tenantId ? "tenant" : "admin"),
+    name: claims.name,
+    tenantId: claims.tenantId,
+  };
 }

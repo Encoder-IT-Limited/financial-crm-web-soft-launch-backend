@@ -7,12 +7,15 @@ import { AppError } from "../common/errors";
 import { parseSubdomain } from "./subdomain";
 import type { RequestTenant } from "../common/types/express";
 
-// Short-lived cache so every request doesn't hit the public schema just to
-// resolve which tenant a subdomain belongs to.
 const subdomainCache = new LRUCache<string, RequestTenant>({
   max: 5000,
   ttl: 60 * 1000,
 });
+
+export function invalidateTenantCache(subdomain?: string) {
+  if (subdomain) subdomainCache.delete(subdomain);
+  else subdomainCache.clear();
+}
 
 async function resolveTenantBySubdomain(subdomain: string): Promise<RequestTenant | null> {
   const cached = subdomainCache.get(subdomain);
@@ -23,20 +26,33 @@ async function resolveTenantBySubdomain(subdomain: string): Promise<RequestTenan
 
   const resolved: RequestTenant = {
     id: tenant.id,
+    name: tenant.name,
     subdomain: tenant.subdomain,
     schemaName: tenant.schemaName,
     status: tenant.status,
+    lifecycle: tenant.lifecycle,
   };
   subdomainCache.set(subdomain, resolved);
   return resolved;
 }
 
-// Resolves the tenant from the request's subdomain and attaches `req.tenant`
-// + `req.tenantPrisma`. Root-domain requests (no subdomain) fall through with
-// `req.tenant = null`, for platform-level routes like tenant registration.
+function subdomainFromRequest(req: Request): string | null {
+  const header = req.headers["x-tenant-subdomain"];
+  if (typeof header === "string" && header.length > 0 && env.NODE_ENV !== "production") {
+    return header;
+  }
+
+  try {
+    return parseSubdomain(req.hostname, env.ROOT_DOMAIN);
+  } catch (err) {
+    if (env.NODE_ENV !== "production" && req.hostname === "localhost") return null;
+    throw err;
+  }
+}
+
 export async function tenantResolver(req: Request, _res: Response, next: NextFunction) {
   try {
-    const subdomain = parseSubdomain(req.hostname, env.ROOT_DOMAIN);
+    const subdomain = subdomainFromRequest(req);
     if (subdomain === null) {
       req.tenant = null;
       return next();

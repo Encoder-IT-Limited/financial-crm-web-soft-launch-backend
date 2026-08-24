@@ -2,14 +2,9 @@ import type { PrismaClient, Invoice } from "../../generated/tenant-client/client
 import { AppError } from "../../common/errors";
 import { emitAccountingEvent } from "../accounting/accounting.service";
 import { receiveStockCore, issueStockCore } from "../inventory/inventory.service";
+import { computeInvoiceTotals, isOverdue, lineTotal } from "./invoicing.totals";
 
-// --- Overdue is computed, never stored — per docs/requirements-qa.md it
-// layers on top of SENT/PARTIALLY_PAID rather than being its own status. ---
-export function isOverdue(invoice: { status: string; dueDate: Date }): boolean {
-  return (
-    (invoice.status === "SENT" || invoice.status === "PARTIALLY_PAID") && invoice.dueDate.getTime() < Date.now()
-  );
-}
+export { isOverdue, computeInvoiceTotals };
 
 export function toInvoiceResponse(invoice: Invoice, rootDomain: string) {
   return {
@@ -30,19 +25,6 @@ async function generateInvoiceNumber(tenantPrisma: PrismaClient): Promise<string
   return `INV-${String(count + 1).padStart(6, "0")}`;
 }
 
-function computeTotals(items: { quantity: number; unitPrice: number; discount: number; tax: number }[]) {
-  let subtotal = 0;
-  let discount = 0;
-  let tax = 0;
-  for (const item of items) {
-    subtotal += item.quantity * item.unitPrice;
-    discount += item.discount;
-    tax += item.tax;
-  }
-  const total = subtotal - discount + tax;
-  return { subtotal, discount, tax, total };
-}
-
 interface CreateInvoiceInput {
   customerId: string;
   dueDate: Date;
@@ -52,7 +34,7 @@ interface CreateInvoiceInput {
 // Draft invoices never touch inventory — per docs/requirements-qa.md, stock
 // is only deducted at an explicit fulfillment event (fulfillInvoice below).
 export async function createInvoice(tenantPrisma: PrismaClient, tenantId: string, input: CreateInvoiceInput) {
-  const totals = computeTotals(input.items);
+  const totals = computeInvoiceTotals(input.items);
   const invoiceNumber = await generateInvoiceNumber(tenantPrisma);
 
   return tenantPrisma.invoice.create({
@@ -75,7 +57,7 @@ export async function createInvoice(tenantPrisma: PrismaClient, tenantId: string
           unitPrice: item.unitPrice,
           discount: item.discount,
           tax: item.tax,
-          total: item.quantity * item.unitPrice - item.discount + item.tax,
+          total: lineTotal(item),
         })),
       },
     },

@@ -15,40 +15,47 @@ enum TenantStatus {
   FAILED
 }
 
-// Platform-level registry: which tenant owns which Postgres schema, and how to
-// resolve a tenant from its subdomain. This table lives in the shared `public`
-// schema; the tenant's actual business data lives in `schemaName`, a separate
-// Postgres schema created and migrated at provisioning time.
 model Tenant {
-  id         String       @id @default(uuid()) @db.Uuid
-  name       String
-  legalName  String?      @map("legal_name")
-  email      String
-  phone      String?
-  address    String?
-  country    String?
-  currency   String?
-  timezone   String?
-  taxNumber  String?      @map("tax_number")
-  subdomain  String       @unique
-  schemaName String       @unique @map("schema_name")
-  status     TenantStatus @default(PROVISIONING)
-  createdAt  DateTime     @default(now()) @map("created_at")
-  updatedAt  DateTime     @updatedAt @map("updated_at")
+  id                String       @id @default(uuid()) @db.Uuid
+  name              String
+  legalName         String?      @map("legal_name")
+  email             String
+  phone             String?
+  address           String?
+  country           String?
+  currency          String?
+  timezone          String?
+  taxNumber         String?      @map("tax_number")
+  subdomain         String       @unique
+  schemaName        String       @unique @map("schema_name")
+  status            TenantStatus @default(PROVISIONING)
+  lifecycle         String       @default("active")
+  extraSeats        Int          @default(0) @map("extra_seats")
+  billingCycle      String       @default("monthly") @map("billing_cycle")
+  pendingDeletionAt DateTime?    @map("pending_deletion_at")
+  createdAt         DateTime     @default(now()) @map("created_at")
+  updatedAt         DateTime     @updatedAt @map("updated_at")
 
   subscriptions Subscription[]
+  payments      PlatformPayment[]
+  auditLogs     PlatformAuditLog[]
 
   @@map("tenants")
 }
 
 model SubscriptionPlan {
-  id           String   @id @default(uuid()) @db.Uuid
-  name         String
-  price        Decimal  @db.Decimal(10, 2)
-  billingCycle String   @map("billing_cycle")
-  baseSeats    Int      @map("base_seats")
-  status       String   @default("ACTIVE")
-  createdAt    DateTime @default(now()) @map("created_at")
+  id                  String   @id @default(uuid()) @db.Uuid
+  name                String
+  priceMonthly        Decimal  @map("price_monthly") @db.Decimal(10, 2)
+  priceYearly         Decimal  @map("price_yearly") @db.Decimal(10, 2)
+  baseSeats           Int      @map("base_seats")
+  additionalSeatPrice Decimal  @default(0) @map("additional_seat_price") @db.Decimal(10, 2)
+  trialDays           Int      @default(14) @map("trial_days")
+  modules             String[]
+  popular             Boolean  @default(false)
+  status              String   @default("ACTIVE")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
 
   subscriptions Subscription[]
 
@@ -68,4 +75,84 @@ model Subscription {
   plan   SubscriptionPlan @relation(fields: [planId], references: [id])
 
   @@map("subscriptions")
+}
+
+model PlatformUser {
+  id           String    @id @default(uuid()) @db.Uuid
+  name         String
+  email        String    @unique
+  passwordHash String    @map("password_hash")
+  status       String    @default("ACTIVE")
+  lastLoginAt  DateTime? @map("last_login_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  refreshTokens PlatformRefreshToken[]
+  auditLogs     PlatformAuditLog[]
+
+  @@map("platform_users")
+}
+
+model PlatformRefreshToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  tokenHash String    @unique @map("token_hash")
+  expiresAt DateTime  @map("expires_at")
+  revokedAt DateTime? @map("revoked_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user PlatformUser @relation(fields: [userId], references: [id])
+
+  @@map("platform_refresh_tokens")
+}
+
+model PlatformPayment {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  reference String
+  planName  String   @map("plan_name")
+  type      String
+  amount    Decimal  @db.Decimal(12, 2)
+  method    String
+  status    String   @default("paid")
+  paidAt    DateTime @default(now()) @map("paid_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@map("platform_payments")
+}
+
+model PlatformAuditLog {
+  id          String   @id @default(uuid()) @db.Uuid
+  userId      String?  @map("user_id") @db.Uuid
+  userName    String   @map("user_name")
+  userEmail   String   @map("user_email")
+  tenantId    String?  @map("tenant_id") @db.Uuid
+  tenantName  String?  @map("tenant_name")
+  module      String
+  entity      String
+  entityLabel String   @map("entity_label")
+  action      String
+  oldValues   Json?    @map("old_values")
+  newValues   Json?    @map("new_values")
+  ipAddress   String?  @map("ip_address")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  user   PlatformUser? @relation(fields: [userId], references: [id])
+  tenant Tenant?       @relation(fields: [tenantId], references: [id])
+
+  @@map("platform_audit_logs")
+}
+
+model PlatformSettings {
+  id                 String  @id @default("default")
+  platformName       String  @default("MRM") @map("platform_name")
+  primaryColor       String? @map("primary_color")
+  retentionDays      Int     @default(60) @map("retention_days")
+  seatLimitMessage   String  @default("You've reached your plan's seat limit. Upgrade your plan or purchase additional seats.") @map("seat_limit_message")
+  maintenanceMode    Boolean @default(false) @map("maintenance_mode")
+  maintenanceMessage String? @map("maintenance_message")
+
+  @@map("platform_settings")
 }

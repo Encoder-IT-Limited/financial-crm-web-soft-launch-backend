@@ -6,12 +6,17 @@ export interface RequestTenant {
   subdomain: string;
   schemaName: string;
   status: TenantStatus;
+  lifecycle: string;
+  name: string;
 }
 
 export interface RequestUser {
   id: string;
   email: string;
   role: string;
+  realm: "admin" | "tenant";
+  name?: string;
+  tenantId?: string;
 }
 
 declare global {

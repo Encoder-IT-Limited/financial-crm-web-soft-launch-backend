@@ -10,24 +10,31 @@ export function hashPassword(password: string): Promise<string> {
   return bcrypt.hash(password, BCRYPT_ROUNDS);
 }
 
-function hashToken(token: string): string {
-  return crypto.createHash("sha256").update(token).digest("hex");
-}
-
 interface TokenPair {
   accessToken: string;
   refreshToken: string;
 }
 
+export function hashToken(token: string): string {
+  return crypto.createHash("sha256").update(token).digest("hex");
+}
+
 async function issueTokenPair(
   tenantPrisma: PrismaClient,
   tenantId: string,
-  user: { id: string; email: string; role: string },
+  user: { id: string; email: string; role: string; name?: string },
 ): Promise<TokenPair> {
-  const accessToken = signAccessToken({ sub: user.id, tenantId, email: user.email, role: user.role });
+  const accessToken = signAccessToken({
+    sub: user.id,
+    tenantId,
+    email: user.email,
+    role: user.role,
+    realm: "tenant",
+    name: user.name,
+  });
 
   const jti = crypto.randomUUID();
-  const refreshToken = signRefreshToken({ sub: user.id, jti });
+  const refreshToken = signRefreshToken({ sub: user.id, jti, realm: "tenant" });
   const decoded = verifyRefreshToken(refreshToken);
 
   await tenantPrisma.refreshToken.create({
