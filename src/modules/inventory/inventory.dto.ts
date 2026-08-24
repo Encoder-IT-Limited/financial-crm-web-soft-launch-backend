@@ -1,2 +1,21 @@
-/** API DTOs for products. */
-export type ProductDto = Record<string, unknown>;
+export type ProductDto = {
+  id: string;
+  sku: string;
+  barcode: string | null;
+  name: string;
+  description: string | null;
+  categoryId: string | null;
+  categoryName: string | null;
+  unitId: string | null;
+  unitName: string | null;
+  unitSymbol: string | null;
+  costPrice: number;
+  sellingPrice: number;
+  taxRate: number;
+  minimumStock: number;
+  reorderLevel: number;
+  trackBatch: boolean;
+  status: string;
+  onHand: number;
+  createdAt: string;
+};

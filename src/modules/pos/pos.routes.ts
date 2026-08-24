@@ -12,6 +12,7 @@ posRouter.get("/terminals", c.listTerminalsHandler);
 posRouter.post("/terminals", requireTenantWritable, c.createTerminalHandler);
 
 posRouter.post("/sessions", requireTenantWritable, c.openSessionHandler);
+posRouter.get("/sessions", c.listSessionsHandler);
 posRouter.post("/sessions/:id/close", requireTenantWritable, c.closeSessionHandler);
 
 posRouter.get("/sales", c.listSalesHandler);

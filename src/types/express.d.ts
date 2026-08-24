@@ -8,6 +8,12 @@ export interface RequestTenant {
   status: TenantStatus;
   lifecycle: string;
   name: string;
+  legalName?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  address?: string | null;
+  taxNumber?: string | null;
+  currency?: string | null;
 }
 
 export interface RequestUser {

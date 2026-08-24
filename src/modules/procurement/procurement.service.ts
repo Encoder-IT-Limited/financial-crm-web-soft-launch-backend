@@ -75,7 +75,7 @@ export async function createPurchaseOrder(
 }
 
 export function listPurchaseOrders(tenantPrisma: PrismaClient) {
-  return tenantPrisma.purchaseOrder.findMany({ orderBy: { createdAt: "desc" } });
+  return tenantPrisma.purchaseOrder.findMany({ include: { items: true }, orderBy: { createdAt: "desc" } });
 }
 
 export async function getPurchaseOrder(tenantPrisma: PrismaClient, id: string) {

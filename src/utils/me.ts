@@ -10,5 +10,11 @@ export type Me = {
     subdomain: string;
     plan: string;
     activeModules: string[];
+    legalName?: string | null;
+    email?: string | null;
+    phone?: string | null;
+    address?: string | null;
+    taxNumber?: string | null;
+    currency?: string | null;
   };
 };

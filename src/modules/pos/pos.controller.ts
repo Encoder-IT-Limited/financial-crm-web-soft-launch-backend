@@ -39,6 +39,17 @@ export async function openSessionHandler(req: Request, res: Response, next: Next
   }
 }
 
+export async function listSessionsHandler(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { tenantPrisma } = ctx(req);
+    const raw = typeof req.query.status === "string" ? req.query.status : undefined;
+    const status = raw === "OPEN" || raw === "CLOSED" ? raw : undefined;
+    res.json(await posService.listSessions(tenantPrisma, status));
+  } catch (err) {
+    next(err);
+  }
+}
+
 export async function closeSessionHandler(req: Request, res: Response, next: NextFunction) {
   try {
     const { tenantPrisma } = ctx(req);

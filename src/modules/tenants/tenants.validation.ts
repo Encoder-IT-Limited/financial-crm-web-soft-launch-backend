@@ -39,6 +39,26 @@ export const updateTenantSchema = z.object({
   billingCycle: z.enum(["monthly", "yearly"]).optional(),
 });
 
+/** Tenant-side org profile (no plan/billing changes). Empty strings become null; omitted keys stay undefined. */
+const optionalText = z
+  .union([z.string(), z.null()])
+  .optional()
+  .transform((value) => {
+    if (value === undefined) return undefined;
+    if (value === null || value.trim() === "") return null;
+    return value.trim();
+  });
+
+export const updateOwnTenantProfileSchema = z.object({
+  name: z.string().trim().min(1).optional(),
+  legalName: optionalText,
+  email: z.string().trim().email().optional(),
+  phone: optionalText,
+  address: optionalText,
+  taxNumber: optionalText,
+  currency: optionalText,
+});
+
 export const addSeatsSchema = z.object({
   count: z.number().int().positive(),
 });

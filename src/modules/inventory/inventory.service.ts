@@ -2,10 +2,65 @@ import type { PrismaClient, Prisma } from "../../generated/tenant-client/client"
 import { AppError } from "../../utils/errors";
 import { emitAccountingEvent } from "../accounting/accounting.service";
 import { weightedAverageCost } from "./inventory.costing";
+import { generateBatchNumber } from "./inventory.batch";
+import type { ProductDto } from "./inventory.dto";
+import type { z } from "zod";
+import type { createProductSchema, updateProductSchema } from "./inventory.validation";
 
 type Db = PrismaClient | Prisma.TransactionClient;
 
 // --- Catalog -------------------------------------------------------------
+
+const productInclude = {
+  category: { select: { id: true, name: true } },
+  unit: { select: { id: true, name: true, symbol: true } },
+} as const;
+
+function toProductDto(
+  row: {
+    id: string;
+    sku: string;
+    barcode: string | null;
+    name: string;
+    description: string | null;
+    categoryId: string | null;
+    unitId: string | null;
+    costPrice: unknown;
+    sellingPrice: unknown;
+    taxRate: unknown;
+    minimumStock: unknown;
+    reorderLevel: unknown;
+    trackBatch: boolean;
+    status: string;
+    createdAt: Date;
+    category?: { name: string } | null;
+    unit?: { name: string; symbol: string } | null;
+    stockBalances?: { quantity: unknown }[];
+  },
+): ProductDto {
+  const onHand = (row.stockBalances ?? []).reduce((sum, b) => sum + Number(b.quantity), 0);
+  return {
+    id: row.id,
+    sku: row.sku,
+    barcode: row.barcode,
+    name: row.name,
+    description: row.description,
+    categoryId: row.categoryId,
+    categoryName: row.category?.name ?? null,
+    unitId: row.unitId,
+    unitName: row.unit?.name ?? null,
+    unitSymbol: row.unit?.symbol ?? null,
+    costPrice: Number(row.costPrice),
+    sellingPrice: Number(row.sellingPrice),
+    taxRate: Number(row.taxRate),
+    minimumStock: Number(row.minimumStock),
+    reorderLevel: Number(row.reorderLevel),
+    trackBatch: row.trackBatch,
+    status: row.status,
+    onHand,
+    createdAt: row.createdAt.toISOString(),
+  };
+}
 
 export function listCategories(tenantPrisma: PrismaClient) {
   return tenantPrisma.productCategory.findMany({ orderBy: { name: "asc" } });
@@ -27,28 +82,69 @@ export function createUnit(tenantPrisma: PrismaClient, tenantId: string, input: 
   return tenantPrisma.unit.create({ data: { tenantId, ...input } });
 }
 
-export function listProducts(tenantPrisma: PrismaClient) {
-  return tenantPrisma.product.findMany({ orderBy: { createdAt: "desc" } });
+export async function listProducts(tenantPrisma: PrismaClient) {
+  const rows = await tenantPrisma.product.findMany({
+    include: { ...productInclude, stockBalances: { select: { quantity: true } } },
+    orderBy: { createdAt: "desc" },
+  });
+  return rows.map(toProductDto);
 }
 
-export function createProduct(
+export async function createProduct(
   tenantPrisma: PrismaClient,
   tenantId: string,
-  input: {
-    sku: string;
-    barcode?: string;
-    name: string;
-    description?: string;
-    categoryId?: string;
-    unitId?: string;
-    costPrice: number;
-    sellingPrice: number;
-    taxRate: number;
-    reorderLevel: number;
-    trackBatch: boolean;
-  },
+  input: z.infer<typeof createProductSchema>,
 ) {
-  return tenantPrisma.product.create({ data: { tenantId, ...input } });
+  const row = await tenantPrisma.product.create({
+    data: {
+      tenantId,
+      sku: input.sku,
+      barcode: input.barcode,
+      name: input.name,
+      description: input.description,
+      categoryId: input.categoryId,
+      unitId: input.unitId,
+      costPrice: input.costPrice,
+      sellingPrice: input.sellingPrice,
+      taxRate: input.taxRate,
+      minimumStock: input.minimumStock,
+      reorderLevel: input.reorderLevel,
+      trackBatch: input.trackBatch,
+      status: input.status,
+    },
+    include: { ...productInclude, stockBalances: { select: { quantity: true } } },
+  });
+  return toProductDto(row);
+}
+
+export async function updateProduct(
+  tenantPrisma: PrismaClient,
+  id: string,
+  input: z.infer<typeof updateProductSchema>,
+) {
+  const existing = await tenantPrisma.product.findUnique({ where: { id } });
+  if (!existing) throw new AppError(404, "PRODUCT_NOT_FOUND", "Product not found");
+
+  const row = await tenantPrisma.product.update({
+    where: { id },
+    data: {
+      ...(input.sku !== undefined ? { sku: input.sku } : {}),
+      ...(input.barcode !== undefined ? { barcode: input.barcode } : {}),
+      ...(input.name !== undefined ? { name: input.name } : {}),
+      ...(input.description !== undefined ? { description: input.description } : {}),
+      ...(input.categoryId !== undefined ? { categoryId: input.categoryId } : {}),
+      ...(input.unitId !== undefined ? { unitId: input.unitId } : {}),
+      ...(input.costPrice !== undefined ? { costPrice: input.costPrice } : {}),
+      ...(input.sellingPrice !== undefined ? { sellingPrice: input.sellingPrice } : {}),
+      ...(input.taxRate !== undefined ? { taxRate: input.taxRate } : {}),
+      ...(input.minimumStock !== undefined ? { minimumStock: input.minimumStock } : {}),
+      ...(input.reorderLevel !== undefined ? { reorderLevel: input.reorderLevel } : {}),
+      ...(input.trackBatch !== undefined ? { trackBatch: input.trackBatch } : {}),
+      ...(input.status !== undefined ? { status: input.status } : {}),
+    },
+    include: { ...productInclude, stockBalances: { select: { quantity: true } } },
+  });
+  return toProductDto(row);
 }
 
 export function listWarehouses(tenantPrisma: PrismaClient) {
@@ -58,9 +154,17 @@ export function listWarehouses(tenantPrisma: PrismaClient) {
 export function createWarehouse(
   tenantPrisma: PrismaClient,
   tenantId: string,
-  input: { name: string; code: string; address?: string },
+  input: { name: string; code: string; address?: string; status?: "ACTIVE" | "INACTIVE" },
 ) {
-  return tenantPrisma.warehouse.create({ data: { tenantId, ...input } });
+  return tenantPrisma.warehouse.create({
+    data: {
+      tenantId,
+      name: input.name,
+      code: input.code,
+      address: input.address,
+      status: input.status ?? "ACTIVE",
+    },
+  });
 }
 
 // --- Stock movement core (transaction-agnostic — callers decide the
@@ -118,12 +222,25 @@ export async function receiveStockCore(db: Db, tenantId: string, input: ReceiveS
   );
 
   let batch = null;
-  if (product.trackBatch && input.batchNumber) {
+  const batchNumber = input.batchNumber?.trim() || generateBatchNumber();
+  const existingBatch = await db.batch.findFirst({
+    where: { productId: input.productId, warehouseId: input.warehouseId, batchNumber },
+  });
+  if (existingBatch) {
+    batch = await db.batch.update({
+      where: { id: existingBatch.id },
+      data: {
+        quantity: { increment: input.quantity },
+        expiryDate: input.expiryDate ?? existingBatch.expiryDate,
+        manufactureDate: input.manufactureDate ?? existingBatch.manufactureDate,
+      },
+    });
+  } else {
     batch = await db.batch.create({
       data: {
         productId: input.productId,
         warehouseId: input.warehouseId,
-        batchNumber: input.batchNumber,
+        batchNumber,
         expiryDate: input.expiryDate,
         manufactureDate: input.manufactureDate,
         quantity: input.quantity,
@@ -208,8 +325,8 @@ export async function issueStockCore(db: Db, tenantId: string, input: IssueStock
     unitCost,
   );
 
-  const movements = [];
   let remaining = input.quantity;
+  const movements: Awaited<ReturnType<typeof db.stockMovement.create>>[] = [];
 
   if (product.trackBatch) {
     const batches = await db.batch.findMany({
@@ -450,8 +567,12 @@ export async function receiveTransfer(tenantPrisma: PrismaClient, tenantId: stri
   });
 }
 
-export function getProduct(tenantPrisma: PrismaClient, id: string) {
-  return tenantPrisma.product.findUnique({ where: { id } });
+export async function getProduct(tenantPrisma: PrismaClient, id: string) {
+  const row = await tenantPrisma.product.findUnique({
+    where: { id },
+    include: { ...productInclude, stockBalances: { select: { quantity: true } } },
+  });
+  return row ? toProductDto(row) : null;
 }
 
 export function getWarehouse(tenantPrisma: PrismaClient, id: string) {
@@ -468,4 +589,11 @@ export function listTransfers(tenantPrisma: PrismaClient) {
 
 export function listMovements(tenantPrisma: PrismaClient) {
   return tenantPrisma.stockMovement.findMany({ orderBy: { movementDate: "desc" }, take: 200 });
+}
+
+export function listBatches(tenantPrisma: PrismaClient) {
+  return tenantPrisma.batch.findMany({
+    orderBy: [{ expiryDate: { sort: "asc", nulls: "last" } }, { createdAt: "desc" }],
+    take: 500,
+  });
 }

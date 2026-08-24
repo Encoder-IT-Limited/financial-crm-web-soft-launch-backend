@@ -1,3 +1,4 @@
+import type { Request } from "express";
 import { publicPrisma } from "../../db/publicPrisma";
 import { getTenantPrismaClient, TENANT_SCHEMA_NAME_RE } from "../../db/tenantClientCache";
 import { migrateTenantSchema } from "../../db/migrateTenantSchema";
@@ -7,7 +8,7 @@ import { logger } from "../../utils/logger";
 import { toApiTenantStatus } from "../../utils/tenantStatus";
 import { writeAudit } from "../audit/audit.service";
 import { invalidateTenantCache } from "../../middlewares/tenantResolver";
-import type { RequestUser } from "../../types/express";
+import type { RequestTenant, RequestUser } from "../../types/express";
 
 export interface ProvisionTenantInput {
   name: string;
@@ -130,16 +131,18 @@ export async function toTenantSummary(tenant: {
     orderBy: { startDate: "desc" },
   });
 
-  let usedSeats = 0;
+  let users: { id: string; name: string; email: string; role: string; status?: string }[] = [];
   try {
     const tenantPrisma = getTenantPrismaClient(tenant.schemaName);
-    usedSeats = await tenantPrisma.user.count({
-      where: { status: "ACTIVE", role: { in: seatRoles() as never } },
+    users = await tenantPrisma.user.findMany({
+      select: { id: true, name: true, email: true, role: true, status: true },
+      orderBy: { createdAt: "asc" },
     });
   } catch {
-    usedSeats = 0;
+    users = [];
   }
 
+  const usedSeats = users.filter((u) => u.status === "ACTIVE" && seatRoles().includes(u.role)).length;
   const plan = subscription?.plan;
   const totalSeats = (plan?.baseSeats ?? 0) + tenant.extraSeats;
 
@@ -161,6 +164,7 @@ export async function toTenantSummary(tenant: {
     renewalDate: subscription?.endDate?.toISOString() ?? null,
     pendingDeletionAt: tenant.pendingDeletionAt?.toISOString() ?? null,
     modules: plan?.modules ?? [],
+    users: users.map(({ id, name, email, role }) => ({ id, name, email, role })),
   };
 }
 
@@ -173,19 +177,7 @@ export async function getTenant(id: string) {
   const tenant = await publicPrisma.tenant.findUnique({ where: { id } });
   if (!tenant) throw new AppError(404, "TENANT_NOT_FOUND", "Tenant not found");
 
-  const summary = await toTenantSummary(tenant);
-  let users: { id: string; name: string; email: string; role: string }[] = [];
-  try {
-    const tenantPrisma = getTenantPrismaClient(tenant.schemaName);
-    users = await tenantPrisma.user.findMany({
-      select: { id: true, name: true, email: true, role: true },
-      orderBy: { createdAt: "asc" },
-    });
-  } catch {
-    users = [];
-  }
-
-  return { ...summary, users };
+  return toTenantSummary(tenant);
 }
 
 export async function updateTenant(
@@ -237,6 +229,66 @@ export async function updateTenant(
     newValues: { name: updated.name, email: updated.email },
   });
   return getTenant(id);
+}
+
+export type OwnTenantProfileInput = {
+  name?: string;
+  legalName?: string | null;
+  email?: string;
+  phone?: string | null;
+  address?: string | null;
+  taxNumber?: string | null;
+  currency?: string | null;
+};
+
+export async function updateOwnTenantProfile(req: Request, input: OwnTenantProfileInput) {
+  const current = req.tenant;
+  if (!current) throw new AppError(400, "TENANT_REQUIRED", "This endpoint must be called on a tenant subdomain");
+
+  const existing = await publicPrisma.tenant.findUnique({ where: { id: current.id } });
+  if (!existing) throw new AppError(404, "TENANT_NOT_FOUND", "Tenant not found");
+
+  const updated = await publicPrisma.tenant.update({
+    where: { id: current.id },
+    data: {
+      name: input.name,
+      legalName: input.legalName,
+      email: input.email,
+      phone: input.phone,
+      address: input.address,
+      taxNumber: input.taxNumber,
+      currency: input.currency,
+    },
+  });
+
+  invalidateTenantCache(existing.subdomain);
+  const resolved: RequestTenant = {
+    id: updated.id,
+    name: updated.name,
+    subdomain: updated.subdomain,
+    schemaName: updated.schemaName,
+    status: updated.status,
+    lifecycle: updated.lifecycle,
+    legalName: updated.legalName,
+    email: updated.email,
+    phone: updated.phone,
+    address: updated.address,
+    taxNumber: updated.taxNumber,
+    currency: updated.currency,
+  };
+  req.tenant = resolved;
+
+  await writeAudit({
+    actor: req.user,
+    tenantId: updated.id,
+    tenantName: updated.name,
+    module: "Settings",
+    entity: "Tenant",
+    entityLabel: updated.name,
+    action: "update",
+    oldValues: { name: existing.name, email: existing.email, taxNumber: existing.taxNumber },
+    newValues: { name: updated.name, email: updated.email, taxNumber: updated.taxNumber },
+  });
 }
 
 export async function suspendTenant(id: string, actor?: RequestUser) {

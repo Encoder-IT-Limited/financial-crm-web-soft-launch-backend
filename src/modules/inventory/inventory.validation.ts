@@ -20,14 +20,19 @@ export const createProductSchema = z.object({
   costPrice: z.number().nonnegative().default(0),
   sellingPrice: z.number().nonnegative().default(0),
   taxRate: z.number().min(0).max(100).default(0),
+  minimumStock: z.number().nonnegative().default(0),
   reorderLevel: z.number().nonnegative().default(0),
-  trackBatch: z.boolean().default(false),
+  trackBatch: z.boolean().default(true),
+  status: z.enum(["ACTIVE", "INACTIVE"]).default("ACTIVE"),
 });
+
+export const updateProductSchema = createProductSchema.partial();
 
 export const createWarehouseSchema = z.object({
   name: z.string().min(1),
   code: z.string().min(1),
   address: z.string().optional(),
+  status: z.enum(["ACTIVE", "INACTIVE"]).default("ACTIVE"),
 });
 
 export const receiveStockSchema = z.object({

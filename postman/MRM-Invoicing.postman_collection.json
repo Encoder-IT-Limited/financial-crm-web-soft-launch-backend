@@ -4,7 +4,7 @@
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
-    { "key": "baseUrl", "value": "http://localhost:3000/api/v1" },
+    { "key": "baseUrl", "value": "http://localhost:4001/api/v1" },
     { "key": "accessToken", "value": "" },
     { "key": "customerId", "value": "" },
     { "key": "invoiceId", "value": "" },
@@ -124,6 +124,32 @@
               "mode": "raw",
               "raw": "{\n  \"customerId\": \"{{customerId}}\",\n  \"frequency\": \"MONTHLY\",\n  \"startDate\": \"2026-09-01\",\n  \"amount\": 500,\n  \"description\": \"Monthly maintenance fee\",\n  \"autoSend\": true\n}"
             }
+          }
+        },
+        {
+          "name": "Update Recurring Template",
+          "request": {
+            "method": "PATCH",
+            "url": "{{baseUrl}}/recurring-templates/{{templateId}}",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 550,\n  \"description\": \"Updated monthly fee\",\n  \"nextInvoiceDate\": \"2026-10-01\",\n  \"frequency\": \"MONTHLY\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Delete Recurring Template",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/recurring-templates/{{templateId}}"
+          }
+        },
+        {
+          "name": "Send Invoice Reminder",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/invoices/{{invoiceId}}/reminders"
           }
         }
       ]

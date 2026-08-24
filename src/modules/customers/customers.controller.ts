@@ -41,3 +41,13 @@ export async function updateCustomerHandler(req: Request, res: Response, next: N
     next(err);
   }
 }
+
+export async function deleteCustomerHandler(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { tenantPrisma } = requireTenantAuth(req);
+    await customersService.deleteCustomer(tenantPrisma, requireParam(req, "id"));
+    res.json({ deleted: true });
+  } catch (err) {
+    next(err);
+  }
+}

@@ -67,6 +67,16 @@ export async function createProductHandler(req: Request, res: Response, next: Ne
   }
 }
 
+export async function updateProductHandler(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { tenantPrisma } = ctx(req);
+    const input = v.updateProductSchema.parse(req.body);
+    res.json(await inventoryService.updateProduct(tenantPrisma, requireParam(req, "id"), input));
+  } catch (err) {
+    next(err);
+  }
+}
+
 export async function listWarehousesHandler(req: Request, res: Response, next: NextFunction) {
   try {
     const { tenantPrisma } = ctx(req);
@@ -197,6 +207,15 @@ export async function listMovementsHandler(req: Request, res: Response, next: Ne
   try {
     const { tenantPrisma } = ctx(req);
     res.json(await inventoryService.listMovements(tenantPrisma));
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function listBatchesHandler(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { tenantPrisma } = ctx(req);
+    res.json(await inventoryService.listBatches(tenantPrisma));
   } catch (err) {
     next(err);
   }

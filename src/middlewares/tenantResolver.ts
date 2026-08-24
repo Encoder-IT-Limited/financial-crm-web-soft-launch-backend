@@ -31,6 +31,12 @@ async function resolveTenantBySubdomain(subdomain: string): Promise<RequestTenan
     schemaName: tenant.schemaName,
     status: tenant.status,
     lifecycle: tenant.lifecycle,
+    legalName: tenant.legalName,
+    email: tenant.email,
+    phone: tenant.phone,
+    address: tenant.address,
+    taxNumber: tenant.taxNumber,
+    currency: tenant.currency,
   };
   subdomainCache.set(subdomain, resolved);
   return resolved;

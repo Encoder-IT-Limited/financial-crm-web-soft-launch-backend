@@ -18,6 +18,14 @@ export function errorHandler(err: unknown, req: Request, res: Response, _next: N
     );
   }
 
+  if (isUniqueConstraint(err)) {
+    return res.status(409).json(fail("CONFLICT", "A record with that unique value already exists", undefined, requestId));
+  }
+
   logger.error({ err }, "Unhandled error");
   return res.status(500).json(fail("INTERNAL_ERROR", "Something went wrong", undefined, requestId));
+}
+
+function isUniqueConstraint(err: unknown): boolean {
+  return Boolean(err && typeof err === "object" && "code" in err && (err as { code?: string }).code === "P2002");
 }

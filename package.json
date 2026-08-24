@@ -18,7 +18,8 @@
     "prisma:tenant:generate": "prisma generate --config prisma/tenant/prisma.config.ts",
     "prisma:tenant:migrate": "prisma migrate dev --config prisma/tenant/prisma.config.ts",
     "tenant:provision": "tsx scripts/provisionTenant.ts",
-    "tenant:migrate-all": "tsx scripts/migrateAllTenants.ts"
+    "tenant:migrate-all": "tsx scripts/migrateAllTenants.ts",
+    "platform:seed": "tsx scripts/seedPlatform.ts"
   },
   "keywords": [],
   "author": "",

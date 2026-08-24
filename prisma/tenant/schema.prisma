@@ -131,8 +131,9 @@ model Product {
   costPrice    Decimal       @default(0) @map("cost_price") @db.Decimal(14, 4)
   sellingPrice Decimal       @default(0) @map("selling_price") @db.Decimal(14, 2)
   taxRate      Decimal       @default(0) @map("tax_rate") @db.Decimal(5, 2)
+  minimumStock Decimal       @default(0) @map("minimum_stock") @db.Decimal(14, 2)
   reorderLevel Decimal       @default(0) @map("reorder_level") @db.Decimal(14, 2)
-  trackBatch   Boolean       @default(false) @map("track_batch")
+  trackBatch   Boolean       @default(true) @map("track_batch")
   status       ProductStatus @default(ACTIVE)
   createdAt    DateTime      @default(now()) @map("created_at")
   updatedAt    DateTime      @updatedAt @map("updated_at")
@@ -356,17 +357,52 @@ model Invoice {
   discount      Decimal       @default(0) @db.Decimal(14, 2)
   tax           Decimal       @default(0) @db.Decimal(14, 2)
   total         Decimal       @default(0) @db.Decimal(14, 2)
-  paidAmount    Decimal       @default(0) @map("paid_amount") @db.Decimal(14, 2)
-  balanceDue    Decimal       @default(0) @map("balance_due") @db.Decimal(14, 2)
-  status        InvoiceStatus @default(DRAFT)
-  fulfilledAt   DateTime?     @map("fulfilled_at")
-  createdAt     DateTime      @default(now()) @map("created_at")
-  updatedAt     DateTime      @updatedAt @map("updated_at")
+  paidAmount     Decimal       @default(0) @map("paid_amount") @db.Decimal(14, 2)
+  balanceDue     Decimal       @default(0) @map("balance_due") @db.Decimal(14, 2)
+  status         InvoiceStatus @default(DRAFT)
+  source         String        @default("MANUAL")
+  sentAt         DateTime?     @map("sent_at")
+  lastReminderAt DateTime?     @map("last_reminder_at")
+  fulfilledAt    DateTime?     @map("fulfilled_at")
+  createdAt      DateTime      @default(now()) @map("created_at")
+  updatedAt      DateTime      @updatedAt @map("updated_at")
 
-  items InvoiceItem[]
+  items         InvoiceItem[]
+  fulfillments  InvoiceFulfillment[]
 
   @@unique([invoiceNumber])
   @@map("invoices")
+}
+
+model InvoiceFulfillment {
+  id                 String   @id @default(uuid()) @db.Uuid
+  tenantId           String   @map("tenant_id") @db.Uuid
+  invoiceId          String   @map("invoice_id") @db.Uuid
+  trigger            String   // MANUAL | DELIVERY_NOTE | POS_AUTO
+  deliveryNoteNumber String?  @map("delivery_note_number")
+  notes              String?
+  fulfilledAt        DateTime @default(now()) @map("fulfilled_at")
+  fulfilledBy        String   @map("fulfilled_by") @db.Uuid
+
+  invoice Invoice                   @relation(fields: [invoiceId], references: [id])
+  lines   InvoiceFulfillmentLine[]
+
+  @@unique([deliveryNoteNumber])
+  @@map("invoice_fulfillments")
+}
+
+model InvoiceFulfillmentLine {
+  id             String  @id @default(uuid()) @db.Uuid
+  fulfillmentId  String  @map("fulfillment_id") @db.Uuid
+  invoiceItemId  String  @map("invoice_item_id") @db.Uuid
+  productId      String  @map("product_id") @db.Uuid
+  warehouseId    String  @map("warehouse_id") @db.Uuid
+  quantity       Decimal @db.Decimal(14, 3)
+  status         String  @default("FULFILLED") // FULFILLED | PENDING_RECONCILIATION
+
+  fulfillment InvoiceFulfillment @relation(fields: [fulfillmentId], references: [id])
+
+  @@map("invoice_fulfillment_lines")
 }
 
 model InvoiceItem {
@@ -403,9 +439,115 @@ model RecurringInvoiceTemplate {
   description     String
   autoSend        Boolean                 @default(false) @map("auto_send")
   status          RecurringInvoiceStatus  @default(ACTIVE)
+  kind            String                  @default("INVOICE")
+  retainerId      String?                 @map("retainer_id") @db.Uuid
   createdAt       DateTime                @default(now()) @map("created_at")
 
   @@map("recurring_invoice_templates")
+}
+
+// --- Proposals -------------------------------------------------------------
+
+enum ProposalStatus {
+  DRAFT
+  SENT
+  ACCEPTED
+  REJECTED
+}
+
+model Proposal {
+  id                  String         @id @default(uuid()) @db.Uuid
+  tenantId            String         @map("tenant_id") @db.Uuid
+  customerId          String         @map("customer_id") @db.Uuid
+  proposalNumber      String         @map("proposal_number")
+  proposalDate        DateTime       @map("proposal_date") @db.Date
+  expiryDate          DateTime       @map("expiry_date") @db.Date
+  subtotal            Decimal        @default(0) @db.Decimal(14, 2)
+  discount            Decimal        @default(0) @db.Decimal(14, 2)
+  tax                 Decimal        @default(0) @db.Decimal(14, 2)
+  total               Decimal        @default(0) @db.Decimal(14, 2)
+  notes               String?
+  status              ProposalStatus @default(DRAFT)
+  sentAt              DateTime?      @map("sent_at")
+  respondedAt         DateTime?      @map("responded_at")
+  convertedInvoiceId  String?        @map("converted_invoice_id") @db.Uuid
+  createdAt           DateTime       @default(now()) @map("created_at")
+  updatedAt           DateTime       @updatedAt @map("updated_at")
+
+  items ProposalItem[]
+
+  @@unique([proposalNumber])
+  @@map("proposals")
+}
+
+model ProposalItem {
+  id          String  @id @default(uuid()) @db.Uuid
+  proposalId  String  @map("proposal_id") @db.Uuid
+  description String
+  quantity    Decimal @db.Decimal(14, 3)
+  unitPrice   Decimal @map("unit_price") @db.Decimal(14, 2)
+  discount    Decimal @default(0) @db.Decimal(14, 2)
+  tax         Decimal @default(0) @db.Decimal(14, 2)
+  total       Decimal @db.Decimal(14, 2)
+
+  proposal Proposal @relation(fields: [proposalId], references: [id])
+
+  @@map("proposal_items")
+}
+
+// --- Retainers -------------------------------------------------------------
+
+enum RetainerBillingModel {
+  ONE_TIME
+  RECURRING
+}
+
+enum RetainerStatus {
+  ACTIVE
+  PAUSED
+  CLOSED
+}
+
+model Retainer {
+  id                      String                @id @default(uuid()) @db.Uuid
+  tenantId                String                @map("tenant_id") @db.Uuid
+  customerId              String                @map("customer_id") @db.Uuid
+  retainerNumber          String                @map("retainer_number")
+  contractAmount          Decimal               @map("contract_amount") @db.Decimal(14, 2)
+  remainingBalance        Decimal               @map("remaining_balance") @db.Decimal(14, 2)
+  billingPeriod           String                @map("billing_period")
+  billingModel            RetainerBillingModel  @default(ONE_TIME) @map("billing_model")
+  currency                String                @default("AED")
+  status                  RetainerStatus        @default(ACTIVE)
+  startDate               DateTime              @map("start_date") @db.Date
+  expiryDate              DateTime?             @map("expiry_date") @db.Date
+  notes                   String?
+  fundingInvoiceId        String?               @map("funding_invoice_id") @db.Uuid
+  dispositionReason         String?               @map("disposition_reason")
+  transferredToRetainerId   String?               @map("transferred_to_retainer_id") @db.Uuid
+  rolledOverFromRetainerId  String?               @map("rolled_over_from_retainer_id") @db.Uuid
+  rolledOverToRetainerId    String?               @map("rolled_over_to_retainer_id") @db.Uuid
+  refundAdjustmentId        String?               @map("refund_adjustment_id") @db.Uuid
+  createdAt                 DateTime              @default(now()) @map("created_at")
+  updatedAt                 DateTime              @updatedAt @map("updated_at")
+
+  usage RetainerUsage[]
+
+  @@unique([retainerNumber])
+  @@map("retainers")
+}
+
+model RetainerUsage {
+  id         String   @id @default(uuid()) @db.Uuid
+  retainerId String   @map("retainer_id") @db.Uuid
+  date       DateTime @db.Date
+  amount     Decimal  @db.Decimal(14, 2)
+  note       String
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  retainer Retainer @relation(fields: [retainerId], references: [id])
+
+  @@map("retainer_usage")
 }
 
 // linkedReturn=true triggers an inventory SALES_RETURN receipt for the
@@ -427,6 +569,21 @@ model CreditNote {
 
   @@unique([creditNoteNumber])
   @@map("credit_notes")
+}
+
+model DebitNote {
+  id              String   @id @default(uuid()) @db.Uuid
+  tenantId        String   @map("tenant_id") @db.Uuid
+  customerId      String   @map("customer_id") @db.Uuid
+  invoiceId       String?  @map("invoice_id") @db.Uuid
+  debitNoteNumber String   @map("debit_note_number")
+  amount          Decimal  @db.Decimal(14, 2)
+  reason          String
+  status          String   @default("ISSUED")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  @@unique([debitNoteNumber])
+  @@map("debit_notes")
 }
 
 // --- Procurement -----------------------------------------------------------

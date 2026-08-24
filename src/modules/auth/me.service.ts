@@ -38,6 +38,12 @@ export async function buildMe(req: Request): Promise<Me> {
           subdomain: tenant.subdomain,
           plan: subscription?.plan.name ?? "none",
           activeModules: subscription?.plan.modules ?? [],
+          legalName: tenant.legalName,
+          email: tenant.email,
+          phone: tenant.phone,
+          address: tenant.address,
+          taxNumber: tenant.taxNumber,
+          currency: tenant.currency,
         }
       : undefined,
   };

@@ -29,3 +29,7 @@ export function createCustomer(
 export function updateCustomer(db: PrismaClient, id: string, data: Record<string, unknown>) {
   return db.customer.update({ where: { id }, data });
 }
+
+export function deleteCustomer(db: PrismaClient, id: string) {
+  return db.customer.delete({ where: { id } });
+}

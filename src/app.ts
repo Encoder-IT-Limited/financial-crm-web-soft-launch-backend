@@ -13,6 +13,7 @@ import { authenticateAny } from "./middlewares/authenticate";
 import { meHandler } from "./modules/auth/auth.controller";
 
 import { tenantRouter } from "./modules/tenants/tenants.public.routes";
+import { tenantProfileRouter } from "./modules/tenants/tenants.profile.routes";
 import { adminTenantsRouter } from "./modules/tenants/tenants.routes";
 import { adminPlansRouter } from "./modules/plans/plans.routes";
 import { adminPaymentsRouter } from "./modules/payments/payments.routes";
@@ -23,6 +24,8 @@ import { adminDashboardRouter } from "./modules/dashboard/dashboard.routes";
 import { customersRouter } from "./modules/customers/customers.routes";
 import { inventoryRouter } from "./modules/inventory/inventory.routes";
 import { invoicingRouter } from "./modules/invoicing/invoicing.routes";
+import { proposalsRouter } from "./modules/proposals/proposals.routes";
+import { retainersRouter } from "./modules/retainers/retainers.routes";
 import { procurementRouter } from "./modules/procurement/procurement.routes";
 import { posRouter } from "./modules/pos/pos.routes";
 
@@ -59,9 +62,12 @@ export function createApp() {
   v1.use("/admin/settings", adminSettingsRouter);
 
   v1.use("/platform/tenants", tenantRouter);
+  v1.use("/tenant", tenantProfileRouter);
   v1.use("/customers", customersRouter);
   v1.use("/inventory", inventoryRouter);
   v1.use(invoicingRouter);
+  v1.use("/proposals", proposalsRouter);
+  v1.use("/retainers", retainersRouter);
   v1.use("/procurement", procurementRouter);
   v1.use("/pos", posRouter);
 
