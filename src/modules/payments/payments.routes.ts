@@ -3,7 +3,7 @@ import { z } from "zod";
 import { authenticatePlatform } from "../../middlewares/authenticate";
 import { asyncHandler } from "../../utils/asyncHandler";
 import { requireParam } from "../../utils/params";
-import * as payments from "./payment.service";
+import * as payments from "./payments.service";
 
 export const adminPaymentsRouter: Router = Router();
 adminPaymentsRouter.use(authenticatePlatform);

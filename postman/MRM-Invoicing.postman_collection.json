@@ -8,7 +8,8 @@
     { "key": "accessToken", "value": "" },
     { "key": "customerId", "value": "" },
     { "key": "invoiceId", "value": "" },
-    { "key": "warehouseId", "value": "" }
+    { "key": "warehouseId", "value": "" },
+    { "key": "productId", "value": "" }
   ],
   "auth": {
     "type": "bearer",

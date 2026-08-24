@@ -10,6 +10,7 @@
     { "key": "unitId", "value": "" },
     { "key": "productId", "value": "" },
     { "key": "warehouseId", "value": "" },
+    { "key": "warehouseId2", "value": "" },
     { "key": "transferId", "value": "" }
   ],
   "auth": {
