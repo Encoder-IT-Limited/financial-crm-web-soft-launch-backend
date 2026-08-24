@@ -1,0 +1,199 @@
+{
+  "info": {
+    "name": "MRM – Super Admin",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:3000/api/v1" },
+    { "key": "platformToken", "value": "" },
+    { "key": "tenantId", "value": "" },
+    { "key": "planId", "value": "" },
+    { "key": "paymentId", "value": "" }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{platformToken}}" }]
+  },
+  "item": [
+    {
+      "name": "Dashboard",
+      "item": [
+        {
+          "name": "Get Dashboard Stats",
+          "request": { "method": "GET", "url": "{{baseUrl}}/admin/dashboard" }
+        }
+      ]
+    },
+    {
+      "name": "Tenants",
+      "item": [
+        {
+          "name": "List Tenants",
+          "request": { "method": "GET", "url": "{{baseUrl}}/admin/tenants" }
+        },
+        {
+          "name": "Provision Tenant",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "const res = pm.response.json();",
+            "if (res.success) pm.collectionVariables.set('tenantId', res.data.id);"
+          ]}}],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/admin/tenants",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"New Company\",\n  \"subdomain\": \"newco\",\n  \"ownerName\": \"Admin User\",\n  \"ownerEmail\": \"admin@newco.com\",\n  \"ownerPassword\": \"SecurePass123\",\n  \"country\": \"AE\",\n  \"billingCycle\": \"monthly\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Get Tenant",
+          "request": { "method": "GET", "url": "{{baseUrl}}/admin/tenants/{{tenantId}}" }
+        },
+        {
+          "name": "Update Tenant",
+          "request": {
+            "method": "PATCH",
+            "url": "{{baseUrl}}/admin/tenants/{{tenantId}}",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Updated Company\",\n  \"billingCycle\": \"yearly\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Suspend Tenant",
+          "request": { "method": "POST", "url": "{{baseUrl}}/admin/tenants/{{tenantId}}/suspend" }
+        },
+        {
+          "name": "Reactivate Tenant",
+          "request": { "method": "POST", "url": "{{baseUrl}}/admin/tenants/{{tenantId}}/reactivate" }
+        },
+        {
+          "name": "Add Seats",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/admin/tenants/{{tenantId}}/seats",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"count\": 5\n}" }
+          }
+        },
+        {
+          "name": "Mark Pending Deletion",
+          "request": { "method": "POST", "url": "{{baseUrl}}/admin/tenants/{{tenantId}}/pending-deletion" }
+        }
+      ]
+    },
+    {
+      "name": "Plans",
+      "item": [
+        {
+          "name": "List Plans",
+          "request": { "method": "GET", "url": "{{baseUrl}}/admin/plans" }
+        },
+        {
+          "name": "Create Plan",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "const res = pm.response.json();",
+            "if (res.success) pm.collectionVariables.set('planId', res.data.id);"
+          ]}}],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/admin/plans",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Growth\",\n  \"priceMonthly\": 499,\n  \"priceYearly\": 4790,\n  \"baseSeats\": 10,\n  \"additionalSeatPrice\": 29,\n  \"trialDays\": 14,\n  \"modules\": [\"accounting\", \"sales\", \"inventory\"],\n  \"popular\": true\n}"
+            }
+          }
+        },
+        {
+          "name": "Get Plan",
+          "request": { "method": "GET", "url": "{{baseUrl}}/admin/plans/{{planId}}" }
+        },
+        {
+          "name": "Update Plan",
+          "request": {
+            "method": "PATCH",
+            "url": "{{baseUrl}}/admin/plans/{{planId}}",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"priceMonthly\": 599,\n  \"popular\": false\n}"
+            }
+          }
+        },
+        {
+          "name": "Delete Plan",
+          "request": { "method": "DELETE", "url": "{{baseUrl}}/admin/plans/{{planId}}" }
+        }
+      ]
+    },
+    {
+      "name": "Payments",
+      "item": [
+        {
+          "name": "List Payments",
+          "request": { "method": "GET", "url": "{{baseUrl}}/admin/payments" }
+        },
+        {
+          "name": "Update Payment Status",
+          "request": {
+            "method": "PATCH",
+            "url": "{{baseUrl}}/admin/payments/{{paymentId}}",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"status\": \"paid\"\n}" }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Audit Logs",
+      "item": [
+        {
+          "name": "List Audit Logs",
+          "request": { "method": "GET", "url": "{{baseUrl}}/admin/audit" }
+        },
+        {
+          "name": "List Audit Logs (filtered)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/admin/audit?tenantId={{tenantId}}&module=tenants&action=create",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "audit"],
+              "query": [
+                { "key": "tenantId", "value": "{{tenantId}}" },
+                { "key": "module", "value": "tenants" },
+                { "key": "action", "value": "create" }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Settings",
+      "item": [
+        {
+          "name": "Get Platform Settings",
+          "request": { "method": "GET", "url": "{{baseUrl}}/admin/settings" }
+        },
+        {
+          "name": "Update Platform Settings",
+          "request": {
+            "method": "PATCH",
+            "url": "{{baseUrl}}/admin/settings",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"platformName\": \"MRM Platform\",\n  \"primaryColor\": \"#4F46E5\",\n  \"maintenanceMode\": false\n}"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

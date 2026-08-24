@@ -1,0 +1,118 @@
+{
+  "info": {
+    "name": "MRM – Invoicing & Sales",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:3000/api/v1" },
+    { "key": "accessToken", "value": "" },
+    { "key": "customerId", "value": "" },
+    { "key": "invoiceId", "value": "" },
+    { "key": "warehouseId", "value": "" }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{accessToken}}" }]
+  },
+  "item": [
+    {
+      "name": "Invoices",
+      "item": [
+        {
+          "name": "List Invoices",
+          "request": { "method": "GET", "url": "{{baseUrl}}/invoices" }
+        },
+        {
+          "name": "Create Invoice",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "const res = pm.response.json();",
+            "if (res.success) pm.collectionVariables.set('invoiceId', res.data.id);"
+          ]}}],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/invoices",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customerId\": \"{{customerId}}\",\n  \"dueDate\": \"2026-09-30\",\n  \"items\": [\n    {\n      \"description\": \"USB Cable\",\n      \"quantity\": 10,\n      \"unitPrice\": 5.00,\n      \"discount\": 0,\n      \"tax\": 2.50\n    }\n  ]\n}"
+            }
+          }
+        },
+        {
+          "name": "Get Invoice",
+          "request": { "method": "GET", "url": "{{baseUrl}}/invoices/{{invoiceId}}" }
+        },
+        {
+          "name": "Send Invoice",
+          "request": { "method": "POST", "url": "{{baseUrl}}/invoices/{{invoiceId}}/send" }
+        },
+        {
+          "name": "Record Payment",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/invoices/{{invoiceId}}/payments",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 25.00,\n  \"paymentMethod\": \"BANK\",\n  \"transactionReference\": \"TXN-001\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Fulfill Invoice (Deduct Stock)",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/invoices/{{invoiceId}}/fulfill",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"warehouseId\": \"{{warehouseId}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Cancel Invoice",
+          "request": { "method": "POST", "url": "{{baseUrl}}/invoices/{{invoiceId}}/cancel" }
+        }
+      ]
+    },
+    {
+      "name": "Credit Notes",
+      "item": [
+        {
+          "name": "Create Credit Note",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/credit-notes",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customerId\": \"{{customerId}}\",\n  \"invoiceId\": \"{{invoiceId}}\",\n  \"amount\": 10.00,\n  \"reason\": \"Damaged item returned\",\n  \"linkedReturn\": true,\n  \"refundAmount\": 10.00,\n  \"warehouseId\": \"{{warehouseId}}\",\n  \"returnItems\": [\n    { \"productId\": \"{{productId}}\", \"quantity\": 2 }\n  ]\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Recurring Templates",
+      "item": [
+        {
+          "name": "List Recurring Templates",
+          "request": { "method": "GET", "url": "{{baseUrl}}/recurring-templates" }
+        },
+        {
+          "name": "Create Recurring Template",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/recurring-templates",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customerId\": \"{{customerId}}\",\n  \"frequency\": \"MONTHLY\",\n  \"startDate\": \"2026-09-01\",\n  \"amount\": 500,\n  \"description\": \"Monthly maintenance fee\",\n  \"autoSend\": true\n}"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

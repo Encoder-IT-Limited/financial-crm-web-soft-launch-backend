@@ -1,0 +1,206 @@
+{
+  "info": {
+    "name": "MRM – Inventory",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:3000/api/v1" },
+    { "key": "accessToken", "value": "" },
+    { "key": "categoryId", "value": "" },
+    { "key": "unitId", "value": "" },
+    { "key": "productId", "value": "" },
+    { "key": "warehouseId", "value": "" },
+    { "key": "transferId", "value": "" }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{accessToken}}" }]
+  },
+  "item": [
+    {
+      "name": "Categories",
+      "item": [
+        {
+          "name": "List Categories",
+          "request": { "method": "GET", "url": "{{baseUrl}}/inventory/categories" }
+        },
+        {
+          "name": "Create Category",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "const res = pm.response.json();",
+            "if (res.success) pm.collectionVariables.set('categoryId', res.data.id);"
+          ]}}],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/inventory/categories",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Electronics\"\n}" }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Units",
+      "item": [
+        {
+          "name": "List Units",
+          "request": { "method": "GET", "url": "{{baseUrl}}/inventory/units" }
+        },
+        {
+          "name": "Create Unit",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "const res = pm.response.json();",
+            "if (res.success) pm.collectionVariables.set('unitId', res.data.id);"
+          ]}}],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/inventory/units",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Piece\",\n  \"symbol\": \"pc\"\n}" }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Products",
+      "item": [
+        {
+          "name": "List Products",
+          "request": { "method": "GET", "url": "{{baseUrl}}/inventory/products" }
+        },
+        {
+          "name": "Create Product",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "const res = pm.response.json();",
+            "if (res.success) pm.collectionVariables.set('productId', res.data.id);"
+          ]}}],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/inventory/products",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sku\": \"ELEC-001\",\n  \"name\": \"USB Cable\",\n  \"categoryId\": \"{{categoryId}}\",\n  \"unitId\": \"{{unitId}}\",\n  \"costPrice\": 2.50,\n  \"sellingPrice\": 5.00,\n  \"taxRate\": 5,\n  \"reorderLevel\": 100\n}"
+            }
+          }
+        },
+        {
+          "name": "Get Product",
+          "request": { "method": "GET", "url": "{{baseUrl}}/inventory/products/{{productId}}" }
+        }
+      ]
+    },
+    {
+      "name": "Warehouses",
+      "item": [
+        {
+          "name": "List Warehouses",
+          "request": { "method": "GET", "url": "{{baseUrl}}/inventory/warehouses" }
+        },
+        {
+          "name": "Create Warehouse",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "const res = pm.response.json();",
+            "if (res.success) pm.collectionVariables.set('warehouseId', res.data.id);"
+          ]}}],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/inventory/warehouses",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Main Warehouse\",\n  \"code\": \"WH-01\",\n  \"address\": \"Industrial Area, Dubai\"\n}" }
+          }
+        },
+        {
+          "name": "Get Warehouse",
+          "request": { "method": "GET", "url": "{{baseUrl}}/inventory/warehouses/{{warehouseId}}" }
+        }
+      ]
+    },
+    {
+      "name": "Stock Operations",
+      "item": [
+        {
+          "name": "List Stock Balances",
+          "request": { "method": "GET", "url": "{{baseUrl}}/inventory/stock" }
+        },
+        {
+          "name": "List Movements",
+          "request": { "method": "GET", "url": "{{baseUrl}}/inventory/movements" }
+        },
+        {
+          "name": "Receive Stock",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/inventory/stock/receive",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"productId\": \"{{productId}}\",\n  \"warehouseId\": \"{{warehouseId}}\",\n  \"quantity\": 100,\n  \"unitCost\": 2.50,\n  \"movementType\": \"PURCHASE_RECEIPT\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Issue Stock",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/inventory/stock/issue",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"productId\": \"{{productId}}\",\n  \"warehouseId\": \"{{warehouseId}}\",\n  \"quantity\": 5,\n  \"movementType\": \"SALE\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Adjust Stock",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/inventory/stock/adjust",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"productId\": \"{{productId}}\",\n  \"warehouseId\": \"{{warehouseId}}\",\n  \"quantityDelta\": -3\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Transfers",
+      "item": [
+        {
+          "name": "List Transfers",
+          "request": { "method": "GET", "url": "{{baseUrl}}/inventory/transfers" }
+        },
+        {
+          "name": "Create Transfer",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "const res = pm.response.json();",
+            "if (res.success) pm.collectionVariables.set('transferId', res.data.id);"
+          ]}}],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/inventory/transfers",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fromWarehouseId\": \"{{warehouseId}}\",\n  \"toWarehouseId\": \"{{warehouseId2}}\",\n  \"items\": [\n    { \"productId\": \"{{productId}}\", \"quantity\": 10 }\n  ]\n}"
+            }
+          }
+        },
+        {
+          "name": "Approve Transfer",
+          "request": { "method": "POST", "url": "{{baseUrl}}/inventory/transfers/{{transferId}}/approve" }
+        },
+        {
+          "name": "Dispatch Transfer",
+          "request": { "method": "POST", "url": "{{baseUrl}}/inventory/transfers/{{transferId}}/dispatch" }
+        },
+        {
+          "name": "Receive Transfer",
+          "request": { "method": "POST", "url": "{{baseUrl}}/inventory/transfers/{{transferId}}/receive" }
+        }
+      ]
+    }
+  ]
+}

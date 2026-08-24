@@ -1,0 +1,114 @@
+{
+  "info": {
+    "name": "MRM – Auth",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:3000/api/v1" },
+    { "key": "tenantSubdomain", "value": "acme" },
+    { "key": "accessToken", "value": "" },
+    { "key": "refreshToken", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "Get CSRF Token",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/auth/csrf",
+        "header": []
+      }
+    },
+    {
+      "name": "Signup (Provision Tenant + Owner)",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/auth/signup",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"planId\": \"{{planId}}\",\n  \"company\": {\n    \"name\": \"Acme Corp\",\n    \"country\": \"AE\"\n  },\n  \"owner\": {\n    \"name\": \"John Doe\",\n    \"email\": \"john@acme.com\",\n    \"password\": \"SecurePass123\"\n  }\n}"
+        }
+      }
+    },
+    {
+      "name": "Login",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "const res = pm.response.json();",
+              "if (res.success && res.data.tokens) {",
+              "  pm.collectionVariables.set('accessToken', res.data.tokens.accessToken);",
+              "  pm.collectionVariables.set('refreshToken', res.data.tokens.refreshToken);",
+              "}"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/auth/login",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"john@acme.com\",\n  \"password\": \"SecurePass123\"\n}"
+        }
+      }
+    },
+    {
+      "name": "Refresh Token",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "const res = pm.response.json();",
+              "if (res.success && res.data.tokens) {",
+              "  pm.collectionVariables.set('accessToken', res.data.tokens.accessToken);",
+              "  pm.collectionVariables.set('refreshToken', res.data.tokens.refreshToken);",
+              "}"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/auth/refresh",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}"
+        }
+      }
+    },
+    {
+      "name": "Get Me",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/me",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+        ]
+      }
+    },
+    {
+      "name": "Logout",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/auth/logout",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+        ]
+      }
+    },
+    {
+      "name": "List Public Plans",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/plans",
+        "header": []
+      }
+    }
+  ]
+}

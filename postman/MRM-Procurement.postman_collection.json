@@ -1,0 +1,144 @@
+{
+  "info": {
+    "name": "MRM – Procurement",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:3000/api/v1" },
+    { "key": "accessToken", "value": "" },
+    { "key": "supplierId", "value": "" },
+    { "key": "poId", "value": "" },
+    { "key": "purchaseInvoiceId", "value": "" },
+    { "key": "warehouseId", "value": "" },
+    { "key": "productId", "value": "" }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{accessToken}}" }]
+  },
+  "item": [
+    {
+      "name": "Suppliers",
+      "item": [
+        {
+          "name": "List Suppliers",
+          "request": { "method": "GET", "url": "{{baseUrl}}/procurement/suppliers" }
+        },
+        {
+          "name": "Create Supplier",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "const res = pm.response.json();",
+            "if (res.success) pm.collectionVariables.set('supplierId', res.data.id);"
+          ]}}],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/procurement/suppliers",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"supplierCode\": \"SUP-001\",\n  \"name\": \"Cable Supplies Co\",\n  \"email\": \"info@cables.com\",\n  \"phone\": \"+971501111111\",\n  \"address\": \"Supplier St, Dubai\"\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Purchase Orders",
+      "item": [
+        {
+          "name": "List Purchase Orders",
+          "request": { "method": "GET", "url": "{{baseUrl}}/procurement/purchase-orders" }
+        },
+        {
+          "name": "Create Purchase Order",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "const res = pm.response.json();",
+            "if (res.success) pm.collectionVariables.set('poId', res.data.id);"
+          ]}}],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/procurement/purchase-orders",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"supplierId\": \"{{supplierId}}\",\n  \"warehouseId\": \"{{warehouseId}}\",\n  \"expectedDate\": \"2026-10-01\",\n  \"items\": [\n    {\n      \"productId\": \"{{productId}}\",\n      \"quantity\": 200,\n      \"unitCost\": 2.00,\n      \"tax\": 5,\n      \"discount\": 0\n    }\n  ]\n}"
+            }
+          }
+        },
+        {
+          "name": "Get Purchase Order",
+          "request": { "method": "GET", "url": "{{baseUrl}}/procurement/purchase-orders/{{poId}}" }
+        },
+        {
+          "name": "Submit PO",
+          "request": { "method": "POST", "url": "{{baseUrl}}/procurement/purchase-orders/{{poId}}/submit" }
+        },
+        {
+          "name": "Approve PO",
+          "request": { "method": "POST", "url": "{{baseUrl}}/procurement/purchase-orders/{{poId}}/approve" }
+        },
+        {
+          "name": "Reject PO",
+          "request": { "method": "POST", "url": "{{baseUrl}}/procurement/purchase-orders/{{poId}}/reject" }
+        },
+        {
+          "name": "Close PO",
+          "request": { "method": "POST", "url": "{{baseUrl}}/procurement/purchase-orders/{{poId}}/close" }
+        },
+        {
+          "name": "Create Goods Receipt",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/procurement/purchase-orders/{{poId}}/goods-receipts",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"items\": [\n    {\n      \"productId\": \"{{productId}}\",\n      \"quantity\": 200\n    }\n  ]\n}"
+            }
+          }
+        },
+        {
+          "name": "List Goods Receipts for PO",
+          "request": { "method": "GET", "url": "{{baseUrl}}/procurement/purchase-orders/{{poId}}/goods-receipts" }
+        }
+      ]
+    },
+    {
+      "name": "Purchase Invoices",
+      "item": [
+        {
+          "name": "List Purchase Invoices",
+          "request": { "method": "GET", "url": "{{baseUrl}}/procurement/purchase-invoices" }
+        },
+        {
+          "name": "Create Purchase Invoice",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "const res = pm.response.json();",
+            "if (res.success) pm.collectionVariables.set('purchaseInvoiceId', res.data.id);"
+          ]}}],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/procurement/purchase-invoices",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"supplierId\": \"{{supplierId}}\",\n  \"purchaseOrderId\": \"{{poId}}\",\n  \"dueDate\": \"2026-10-15\",\n  \"subtotal\": 400,\n  \"tax\": 20,\n  \"discount\": 0\n}"
+            }
+          }
+        },
+        {
+          "name": "Record Purchase Invoice Payment",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/procurement/purchase-invoices/{{purchaseInvoiceId}}/payments",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 420,\n  \"paymentMethod\": \"BANK\",\n  \"transactionReference\": \"PAY-SUP-001\"\n}"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

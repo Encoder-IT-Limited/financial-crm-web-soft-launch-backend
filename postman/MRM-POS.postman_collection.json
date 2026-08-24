@@ -1,0 +1,124 @@
+{
+  "info": {
+    "name": "MRM – POS",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:3000/api/v1" },
+    { "key": "accessToken", "value": "" },
+    { "key": "terminalId", "value": "" },
+    { "key": "sessionId", "value": "" },
+    { "key": "saleId", "value": "" },
+    { "key": "warehouseId", "value": "" },
+    { "key": "productId", "value": "" }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{accessToken}}" }]
+  },
+  "item": [
+    {
+      "name": "Terminals",
+      "item": [
+        {
+          "name": "List Terminals",
+          "request": { "method": "GET", "url": "{{baseUrl}}/pos/terminals" }
+        },
+        {
+          "name": "Create Terminal",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "const res = pm.response.json();",
+            "if (res.success) pm.collectionVariables.set('terminalId', res.data.id);"
+          ]}}],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/pos/terminals",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Counter 1\",\n  \"code\": \"POS-01\",\n  \"warehouseId\": \"{{warehouseId}}\"\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Sessions",
+      "item": [
+        {
+          "name": "Open Session",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "const res = pm.response.json();",
+            "if (res.success) pm.collectionVariables.set('sessionId', res.data.id);"
+          ]}}],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/pos/sessions",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"terminalId\": \"{{terminalId}}\",\n  \"openingCash\": 500\n}"
+            }
+          }
+        },
+        {
+          "name": "Close Session",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/pos/sessions/{{sessionId}}/close",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"closingCash\": 750\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Sales",
+      "item": [
+        {
+          "name": "List Sales",
+          "request": { "method": "GET", "url": "{{baseUrl}}/pos/sales" }
+        },
+        {
+          "name": "Create Sale",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "const res = pm.response.json();",
+            "if (res.success) pm.collectionVariables.set('saleId', res.data.id);"
+          ]}}],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/pos/sales",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"posSessionId\": \"{{sessionId}}\",\n  \"items\": [\n    {\n      \"productId\": \"{{productId}}\",\n      \"quantity\": 2,\n      \"unitPrice\": 5.00,\n      \"discount\": 0,\n      \"tax\": 0.50\n    }\n  ],\n  \"payments\": [\n    {\n      \"paymentMethod\": \"CASH\",\n      \"amount\": 10.50\n    }\n  ]\n}"
+            }
+          }
+        },
+        {
+          "name": "Get Sale",
+          "request": { "method": "GET", "url": "{{baseUrl}}/pos/sales/{{saleId}}" }
+        },
+        {
+          "name": "Refund Sale",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/pos/sales/{{saleId}}/refund",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"items\": [\n    {\n      \"productId\": \"{{productId}}\",\n      \"quantity\": 1,\n      \"unitPrice\": 5.00,\n      \"condition\": \"SELLABLE\"\n    }\n  ],\n  \"reason\": \"Customer changed mind\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Void Sale",
+          "request": { "method": "POST", "url": "{{baseUrl}}/pos/sales/{{saleId}}/void" }
+        }
+      ]
+    }
+  ]
+}
