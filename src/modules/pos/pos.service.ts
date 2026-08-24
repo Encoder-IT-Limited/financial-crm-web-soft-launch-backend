@@ -1,5 +1,5 @@
 import type { PrismaClient, Prisma } from "../../generated/tenant-client/client";
-import { AppError } from "../../common/errors";
+import { AppError } from "../../utils/errors";
 import { emitAccountingEvent } from "../accounting/accounting.service";
 import { issueStockCore, receiveStockCore } from "../inventory/inventory.service";
 

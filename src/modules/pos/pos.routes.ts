@@ -1,7 +1,7 @@
 import { Router } from "express";
-import { authenticate } from "../../middleware/authenticate";
-import { requireTenantWritable } from "../../middleware/requireTenantWritable";
-import { requireRole } from "../../middleware/requireRole";
+import { authenticate } from "../../middlewares/authenticate";
+import { requireTenantWritable } from "../../middlewares/requireTenantWritable";
+import { requireRole } from "../../middlewares/requireRole";
 import * as c from "./pos.controller";
 
 export const posRouter: Router = Router();

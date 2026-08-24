@@ -1,5 +1,5 @@
 import type { PrismaClient, Prisma } from "../../generated/tenant-client/client";
-import { AppError } from "../../common/errors";
+import { AppError } from "../../utils/errors";
 import { emitAccountingEvent } from "../accounting/accounting.service";
 import { weightedAverageCost } from "./inventory.costing";
 
@@ -448,4 +448,24 @@ export async function receiveTransfer(tenantPrisma: PrismaClient, tenantId: stri
       data: { status: "RECEIVED", receivedAt: new Date() },
     });
   });
+}
+
+export function getProduct(tenantPrisma: PrismaClient, id: string) {
+  return tenantPrisma.product.findUnique({ where: { id } });
+}
+
+export function getWarehouse(tenantPrisma: PrismaClient, id: string) {
+  return tenantPrisma.warehouse.findUnique({ where: { id } });
+}
+
+export function listStockBalances(tenantPrisma: PrismaClient) {
+  return tenantPrisma.stockBalance.findMany({ orderBy: { productId: "asc" } });
+}
+
+export function listTransfers(tenantPrisma: PrismaClient) {
+  return tenantPrisma.stockTransfer.findMany({ include: { items: true }, orderBy: { createdAt: "desc" } });
+}
+
+export function listMovements(tenantPrisma: PrismaClient) {
+  return tenantPrisma.stockMovement.findMany({ orderBy: { movementDate: "desc" }, take: 200 });
 }

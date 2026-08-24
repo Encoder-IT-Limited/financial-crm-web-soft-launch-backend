@@ -1,7 +1,7 @@
 import type { Request, Response, NextFunction } from "express";
-import { AppError } from "../../common/errors";
-import { requireParam } from "../../common/params";
-import * as v from "./pos.validators";
+import { AppError } from "../../utils/errors";
+import { requireParam } from "../../utils/params";
+import * as v from "./pos.validation";
 import * as posService from "./pos.service";
 
 function ctx(req: Request) {

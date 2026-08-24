@@ -1,7 +1,7 @@
 import type { Request, Response, NextFunction } from "express";
-import { AppError } from "../../common/errors";
-import { requireParam } from "../../common/params";
-import * as v from "./inventory.validators";
+import { AppError } from "../../utils/errors";
+import { requireParam } from "../../utils/params";
+import * as v from "./inventory.validation";
 import * as inventoryService from "./inventory.service";
 
 function ctx(req: Request) {
@@ -148,6 +148,55 @@ export async function receiveTransferHandler(req: Request, res: Response, next: 
   try {
     const { tenantPrisma, tenantId, userId } = ctx(req);
     res.json(await inventoryService.receiveTransfer(tenantPrisma, tenantId, requireParam(req, "id"), userId));
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function getProductHandler(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { tenantPrisma } = ctx(req);
+    const product = await inventoryService.getProduct(tenantPrisma, requireParam(req, "id"));
+    if (!product) throw new AppError(404, "PRODUCT_NOT_FOUND", "Product not found");
+    res.json(product);
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function getWarehouseHandler(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { tenantPrisma } = ctx(req);
+    const warehouse = await inventoryService.getWarehouse(tenantPrisma, requireParam(req, "id"));
+    if (!warehouse) throw new AppError(404, "WAREHOUSE_NOT_FOUND", "Warehouse not found");
+    res.json(warehouse);
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function listStockHandler(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { tenantPrisma } = ctx(req);
+    res.json(await inventoryService.listStockBalances(tenantPrisma));
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function listTransfersHandler(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { tenantPrisma } = ctx(req);
+    res.json(await inventoryService.listTransfers(tenantPrisma));
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function listMovementsHandler(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { tenantPrisma } = ctx(req);
+    res.json(await inventoryService.listMovements(tenantPrisma));
   } catch (err) {
     next(err);
   }

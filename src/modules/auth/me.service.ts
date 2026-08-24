@@ -1,7 +1,7 @@
 import type { Request } from "express";
 import { publicPrisma } from "../../db/publicPrisma";
-import type { Me } from "../../core/identity/me";
-import { ROLE_PERMISSIONS } from "../../core/identity/permissions";
+import type { Me } from "../../utils/me";
+import { ROLE_PERMISSIONS } from "../../utils/permissions";
 
 export async function buildMe(req: Request): Promise<Me> {
   if (!req.user) throw new Error("buildMe called without req.user");

@@ -1,11 +1,25 @@
 import express from "express";
+import cookieParser from "cookie-parser";
 import pinoHttp from "pino-http";
-import { logger } from "./common/logger";
+import { logger } from "./utils/logger";
 import { publicPrisma } from "./db/publicPrisma";
-import { tenantResolver } from "./middleware/tenantResolver";
-import { errorHandler } from "./middleware/errorHandler";
-import { tenantRouter } from "./platform/tenants/tenant.routes";
-import { authRouter } from "./modules/auth/auth.routes";
+import { tenantResolver } from "./middlewares/tenantResolver";
+import { errorHandler } from "./middlewares/errorHandler";
+import { envelopeResponse } from "./middlewares/envelopeResponse";
+import { csrfGuard } from "./middlewares/csrf";
+
+import { authRouter, publicPlansRouter } from "./modules/auth/auth.routes";
+import { authenticateAny } from "./middlewares/authenticate";
+import { meHandler } from "./modules/auth/auth.controller";
+
+import { tenantRouter } from "./modules/tenants/tenants.public.routes";
+import { adminTenantsRouter } from "./modules/tenants/tenants.routes";
+import { adminPlansRouter } from "./modules/plans/plans.routes";
+import { adminPaymentsRouter } from "./modules/payments/payments.routes";
+import { adminAuditRouter } from "./modules/audit/audit.routes";
+import { adminSettingsRouter } from "./modules/settings/settings.routes";
+import { adminDashboardRouter } from "./modules/dashboard/dashboard.routes";
+
 import { customersRouter } from "./modules/customers/customers.routes";
 import { inventoryRouter } from "./modules/inventory/inventory.routes";
 import { invoicingRouter } from "./modules/invoicing/invoicing.routes";
@@ -17,27 +31,43 @@ export function createApp() {
 
   app.use(pinoHttp({ logger }));
   app.use(express.json());
+  app.use(cookieParser());
+  app.use(envelopeResponse);
+  app.use(csrfGuard);
+  app.use(tenantResolver);
 
-  app.get("/api/health", async (_req, res, next) => {
+  const v1 = express.Router();
+
+  v1.get("/health", async (_req, res, next) => {
     try {
       await publicPrisma.$queryRaw`SELECT 1`;
-      res.json({ status: "ok" });
+      res.json({ status: "ok", phase: 1 });
     } catch (err) {
       next(err);
     }
   });
 
-  app.use(tenantResolver);
+  v1.use("/auth", authRouter);
+  v1.get("/me", authenticateAny, meHandler);
+  v1.use("/plans", publicPlansRouter);
 
-  app.use("/api/platform/tenants", tenantRouter);
-  app.use("/api/auth", authRouter);
-  app.use("/api/customers", customersRouter);
-  app.use("/api/inventory", inventoryRouter);
-  app.use("/api", invoicingRouter);
-  app.use("/api/procurement", procurementRouter);
-  app.use("/api/pos", posRouter);
+  v1.use("/admin/dashboard", adminDashboardRouter);
+  v1.use("/admin/tenants", adminTenantsRouter);
+  v1.use("/admin/plans", adminPlansRouter);
+  v1.use("/admin/payments", adminPaymentsRouter);
+  v1.use("/admin/audit", adminAuditRouter);
+  v1.use("/admin/settings", adminSettingsRouter);
+
+  v1.use("/platform/tenants", tenantRouter);
+  v1.use("/customers", customersRouter);
+  v1.use("/inventory", inventoryRouter);
+  v1.use(invoicingRouter);
+  v1.use("/procurement", procurementRouter);
+  v1.use("/pos", posRouter);
+
+  app.use("/api/v1", v1);
+  app.use("/api", v1);
 
   app.use(errorHandler);
-
   return app;
 }

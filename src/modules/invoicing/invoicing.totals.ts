@@ -34,7 +34,7 @@ export function isOverdue(invoice: { status: string; dueDate: Date }, now = Date
 }
 
 export function roundMoney(value: number): number {
-  return Math.round(value * 100) / 100;
+  return Number(Math.round(Number(value + "e2")) + "e-2");
 }
 
 export function nextInvoiceStatus(paidAmount: number, total: number): "PAID" | "PARTIALLY_PAID" | "SENT" {

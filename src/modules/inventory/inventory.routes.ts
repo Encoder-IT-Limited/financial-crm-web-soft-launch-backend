@@ -1,7 +1,7 @@
 import { Router } from "express";
-import { authenticate } from "../../middleware/authenticate";
-import { requireTenantWritable } from "../../middleware/requireTenantWritable";
-import { requireRole } from "../../middleware/requireRole";
+import { authenticate } from "../../middlewares/authenticate";
+import { requireTenantWritable } from "../../middlewares/requireTenantWritable";
+import { requireRole } from "../../middlewares/requireRole";
 import * as c from "./inventory.controller";
 
 export const inventoryRouter: Router = Router();
@@ -16,10 +16,14 @@ inventoryRouter.post("/units", requireTenantWritable, c.createUnitHandler);
 
 inventoryRouter.get("/products", c.listProductsHandler);
 inventoryRouter.post("/products", requireTenantWritable, c.createProductHandler);
+inventoryRouter.get("/products/:id", c.getProductHandler);
 
 inventoryRouter.get("/warehouses", c.listWarehousesHandler);
 inventoryRouter.post("/warehouses", requireTenantWritable, c.createWarehouseHandler);
+inventoryRouter.get("/warehouses/:id", c.getWarehouseHandler);
 
+inventoryRouter.get("/stock", c.listStockHandler);
+inventoryRouter.get("/movements", c.listMovementsHandler);
 inventoryRouter.post("/stock/receive", requireTenantWritable, c.receiveStockHandler);
 inventoryRouter.post("/stock/issue", requireTenantWritable, c.issueStockHandler);
 inventoryRouter.post(
@@ -30,6 +34,7 @@ inventoryRouter.post(
 );
 
 inventoryRouter.post("/transfers", requireTenantWritable, c.requestTransferHandler);
+inventoryRouter.get("/transfers", c.listTransfersHandler);
 inventoryRouter.post(
   "/transfers/:id/approve",
   requireTenantWritable,

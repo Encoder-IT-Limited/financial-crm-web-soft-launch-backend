@@ -1,6 +1,6 @@
 import { createApp } from "./app";
 import { env } from "./config/env";
-import { logger } from "./common/logger";
+import { logger } from "./utils/logger";
 import { closeAllTenantClients } from "./db/tenantClientCache";
 import { publicPrisma } from "./db/publicPrisma";
 

@@ -1,9 +1,17 @@
 import { Router } from "express";
-import { authenticate } from "../../middleware/authenticate";
-import { requireTenantWritable } from "../../middleware/requireTenantWritable";
-import { listCustomersHandler, createCustomerHandler } from "./customers.controller";
+import { authenticate } from "../../middlewares/authenticate";
+import { requireTenantWritable } from "../../middlewares/requireTenantWritable";
+import {
+  listCustomersHandler,
+  createCustomerHandler,
+  getCustomerHandler,
+  updateCustomerHandler,
+} from "./customers.controller";
 
 export const customersRouter: Router = Router();
 
-customersRouter.get("/", authenticate, listCustomersHandler);
-customersRouter.post("/", authenticate, requireTenantWritable, createCustomerHandler);
+customersRouter.use(authenticate);
+customersRouter.get("/", listCustomersHandler);
+customersRouter.post("/", requireTenantWritable, createCustomerHandler);
+customersRouter.get("/:id", getCustomerHandler);
+customersRouter.patch("/:id", requireTenantWritable, updateCustomerHandler);

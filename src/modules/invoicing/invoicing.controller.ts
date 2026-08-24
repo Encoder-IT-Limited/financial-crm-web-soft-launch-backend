@@ -1,8 +1,8 @@
 import type { Request, Response, NextFunction } from "express";
-import { AppError } from "../../common/errors";
-import { requireParam } from "../../common/params";
+import { AppError } from "../../utils/errors";
+import { requireParam } from "../../utils/params";
 import { env } from "../../config/env";
-import * as v from "./invoicing.validators";
+import * as v from "./invoicing.validation";
 import * as invoicingService from "./invoicing.service";
 
 function ctx(req: Request) {

@@ -1,4 +1,4 @@
-import { provisionTenant } from "../src/platform/tenants/tenant.service";
+import { provisionTenant } from "../src/modules/tenants/tenants.service";
 import { publicPrisma } from "../src/db/publicPrisma";
 import { closeAllTenantClients } from "../src/db/tenantClientCache";
 

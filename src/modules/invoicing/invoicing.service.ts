@@ -1,5 +1,5 @@
 import type { PrismaClient, Invoice } from "../../generated/tenant-client/client";
-import { AppError } from "../../common/errors";
+import { AppError } from "../../utils/errors";
 import { emitAccountingEvent } from "../accounting/accounting.service";
 import { receiveStockCore, issueStockCore } from "../inventory/inventory.service";
 import { computeInvoiceTotals, isOverdue, lineTotal } from "./invoicing.totals";

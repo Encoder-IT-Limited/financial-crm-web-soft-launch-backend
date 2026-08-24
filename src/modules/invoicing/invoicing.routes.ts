@@ -1,6 +1,6 @@
 import { Router } from "express";
-import { authenticate } from "../../middleware/authenticate";
-import { requireTenantWritable } from "../../middleware/requireTenantWritable";
+import { authenticate } from "../../middlewares/authenticate";
+import { requireTenantWritable } from "../../middlewares/requireTenantWritable";
 import * as c from "./invoicing.controller";
 
 export const invoicingRouter: Router = Router();

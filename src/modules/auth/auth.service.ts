@@ -1,18 +1,15 @@
 import crypto from "node:crypto";
 import bcrypt from "bcrypt";
 import type { PrismaClient } from "../../generated/tenant-client/client";
-import { AppError } from "../../common/errors";
-import { signAccessToken, signRefreshToken, verifyRefreshToken } from "./jwt";
+import { AppError } from "../../utils/errors";
+import { signAccessToken, signRefreshToken, verifyRefreshToken } from "../../utils/jwt";
+import type { LoginResponseDto, TokenPairDto } from "./auth.dto";
+import * as authRepository from "./auth.repository";
 
 const BCRYPT_ROUNDS = 12;
 
 export function hashPassword(password: string): Promise<string> {
   return bcrypt.hash(password, BCRYPT_ROUNDS);
-}
-
-interface TokenPair {
-  accessToken: string;
-  refreshToken: string;
 }
 
 export function hashToken(token: string): string {
@@ -23,7 +20,7 @@ async function issueTokenPair(
   tenantPrisma: PrismaClient,
   tenantId: string,
   user: { id: string; email: string; role: string; name?: string },
-): Promise<TokenPair> {
+): Promise<TokenPairDto> {
   const accessToken = signAccessToken({
     sub: user.id,
     tenantId,
@@ -33,16 +30,13 @@ async function issueTokenPair(
     name: user.name,
   });
 
-  const jti = crypto.randomUUID();
-  const refreshToken = signRefreshToken({ sub: user.id, jti, realm: "tenant" });
+  const refreshToken = signRefreshToken({ sub: user.id, jti: crypto.randomUUID(), realm: "tenant" });
   const decoded = verifyRefreshToken(refreshToken);
 
-  await tenantPrisma.refreshToken.create({
-    data: {
-      userId: user.id,
-      tokenHash: hashToken(refreshToken),
-      expiresAt: new Date(decoded.exp * 1000),
-    },
+  await authRepository.createRefreshToken(tenantPrisma, {
+    userId: user.id,
+    tokenHash: hashToken(refreshToken),
+    expiresAt: new Date(decoded.exp * 1000),
   });
 
   return { accessToken, refreshToken };
@@ -53,8 +47,8 @@ export async function login(
   tenantId: string,
   email: string,
   password: string,
-): Promise<TokenPair & { user: { id: string; name: string; email: string; role: string } }> {
-  const user = await tenantPrisma.user.findUnique({ where: { email } });
+): Promise<LoginResponseDto> {
+  const user = await authRepository.findUserByEmail(tenantPrisma, email);
   if (!user || user.status !== "ACTIVE") {
     throw new AppError(401, "INVALID_CREDENTIALS", "Invalid email or password");
   }
@@ -64,8 +58,7 @@ export async function login(
     throw new AppError(401, "INVALID_CREDENTIALS", "Invalid email or password");
   }
 
-  await tenantPrisma.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } });
-
+  await authRepository.touchLastLogin(tenantPrisma, user.id);
   const tokens = await issueTokenPair(tenantPrisma, tenantId, user);
   return { ...tokens, user: { id: user.id, name: user.name, email: user.email, role: user.role } };
 }
@@ -74,7 +67,7 @@ export async function refresh(
   tenantPrisma: PrismaClient,
   tenantId: string,
   refreshToken: string,
-): Promise<TokenPair> {
+): Promise<TokenPairDto> {
   let payload;
   try {
     payload = verifyRefreshToken(refreshToken);
@@ -82,22 +75,16 @@ export async function refresh(
     throw new AppError(401, "INVALID_REFRESH_TOKEN", "Refresh token is invalid or expired");
   }
 
-  const stored = await tenantPrisma.refreshToken.findUnique({
-    where: { tokenHash: hashToken(refreshToken) },
-  });
+  const stored = await authRepository.findRefreshTokenByHash(tenantPrisma, hashToken(refreshToken));
   if (!stored || stored.revokedAt || stored.expiresAt < new Date()) {
     throw new AppError(401, "INVALID_REFRESH_TOKEN", "Refresh token is invalid or expired");
   }
 
-  const user = await tenantPrisma.user.findUnique({ where: { id: payload.sub } });
+  const user = await authRepository.findUserById(tenantPrisma, payload.sub);
   if (!user || user.status !== "ACTIVE") {
     throw new AppError(401, "INVALID_REFRESH_TOKEN", "Refresh token is invalid or expired");
   }
 
-  await tenantPrisma.refreshToken.update({
-    where: { id: stored.id },
-    data: { revokedAt: new Date() },
-  });
-
+  await authRepository.revokeRefreshToken(tenantPrisma, stored.id);
   return issueTokenPair(tenantPrisma, tenantId, user);
 }
