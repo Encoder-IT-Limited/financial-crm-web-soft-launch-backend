@@ -21,6 +21,7 @@ export const createProductSchema = z.object({
   sellingPrice: z.number().nonnegative().default(0),
   taxRate: z.number().min(0).max(100).default(0),
   minimumStock: z.number().nonnegative().default(0),
+  maximumStock: z.number().nonnegative().default(0),
   reorderLevel: z.number().nonnegative().default(0),
   trackBatch: z.boolean().default(true),
   status: z.enum(["ACTIVE", "INACTIVE"]).default("ACTIVE"),
@@ -28,11 +29,35 @@ export const createProductSchema = z.object({
 
 export const updateProductSchema = createProductSchema.partial();
 
+export const listProductsQuerySchema = z.object({
+  barcode: z.string().optional(),
+  search: z.string().optional(),
+  status: z.enum(["ACTIVE", "INACTIVE"]).optional(),
+  categoryId: z.string().uuid().optional(),
+  page: z.coerce.number().int().min(1).optional(),
+  pageSize: z.coerce.number().int().min(1).max(100).optional(),
+});
+
 export const createWarehouseSchema = z.object({
   name: z.string().min(1),
   code: z.string().min(1),
   address: z.string().optional(),
   status: z.enum(["ACTIVE", "INACTIVE"]).default("ACTIVE"),
+});
+
+export const updateWarehouseSchema = createWarehouseSchema.partial();
+
+export const listTransfersQuerySchema = z.object({
+  sourceWarehouse: z.string().uuid().optional(),
+  destinationWarehouse: z.string().uuid().optional(),
+  fromWarehouseId: z.string().uuid().optional(),
+  toWarehouseId: z.string().uuid().optional(),
+  status: z.enum(["PENDING", "APPROVED", "DISPATCHED", "RECEIVED", "CANCELLED"]).optional(),
+  dateFrom: z.coerce.date().optional(),
+  dateTo: z.coerce.date().optional(),
+  search: z.string().optional(),
+  page: z.coerce.number().int().min(1).optional(),
+  pageSize: z.coerce.number().int().min(1).max(100).optional(),
 });
 
 export const receiveStockSchema = z.object({

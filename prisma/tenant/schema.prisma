@@ -133,6 +133,7 @@ model Product {
   sellingPrice Decimal       @default(0) @map("selling_price") @db.Decimal(14, 2)
   taxRate      Decimal       @default(0) @map("tax_rate") @db.Decimal(5, 2)
   minimumStock Decimal       @default(0) @map("minimum_stock") @db.Decimal(14, 2)
+  maximumStock Decimal       @default(0) @map("maximum_stock") @db.Decimal(14, 2)
   reorderLevel Decimal       @default(0) @map("reorder_level") @db.Decimal(14, 2)
   trackBatch   Boolean       @default(true) @map("track_batch")
   status       ProductStatus @default(ACTIVE)

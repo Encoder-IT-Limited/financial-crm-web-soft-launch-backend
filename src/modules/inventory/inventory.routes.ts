@@ -19,10 +19,13 @@ inventoryRouter.get("/products/lookup", c.lookupProductByBarcodeHandler);
 inventoryRouter.post("/products", requireTenantWritable, c.createProductHandler);
 inventoryRouter.get("/products/:id", c.getProductHandler);
 inventoryRouter.patch("/products/:id", requireTenantWritable, c.updateProductHandler);
+inventoryRouter.delete("/products/:id", requireTenantWritable, c.deleteProductHandler);
 
 inventoryRouter.get("/warehouses", c.listWarehousesHandler);
 inventoryRouter.post("/warehouses", requireTenantWritable, c.createWarehouseHandler);
 inventoryRouter.get("/warehouses/:id", c.getWarehouseHandler);
+inventoryRouter.patch("/warehouses/:id", requireTenantWritable, c.updateWarehouseHandler);
+inventoryRouter.delete("/warehouses/:id", requireTenantWritable, c.deleteWarehouseHandler);
 
 inventoryRouter.get("/stock", c.listStockHandler);
 inventoryRouter.get("/movements", c.listMovementsHandler);
@@ -44,6 +47,7 @@ inventoryRouter.post(
 
 inventoryRouter.post("/transfers", requireTenantWritable, c.requestTransferHandler);
 inventoryRouter.get("/transfers", c.listTransfersHandler);
+inventoryRouter.get("/transfers/:id", c.getTransferHandler);
 inventoryRouter.post(
   "/transfers/:id/approve",
   requireTenantWritable,

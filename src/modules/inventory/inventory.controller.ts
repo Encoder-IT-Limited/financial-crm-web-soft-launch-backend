@@ -1,6 +1,7 @@
 import type { Request, Response, NextFunction } from "express";
 import { AppError } from "../../utils/errors";
 import { requireParam } from "../../utils/params";
+import { ok } from "../../utils/envelope";
 import * as v from "./inventory.validation";
 import * as inventoryService from "./inventory.service";
 
@@ -51,8 +52,9 @@ export async function createUnitHandler(req: Request, res: Response, next: NextF
 export async function listProductsHandler(req: Request, res: Response, next: NextFunction) {
   try {
     const { tenantPrisma } = ctx(req);
-    const barcode = typeof req.query.barcode === "string" ? req.query.barcode : undefined;
-    res.json(await inventoryService.listProducts(tenantPrisma, barcode));
+    const query = v.listProductsQuerySchema.parse(req.query);
+    const { items, meta } = await inventoryService.listProducts(tenantPrisma, query);
+    res.json(ok(items, meta));
   } catch (err) {
     next(err);
   }
@@ -89,6 +91,15 @@ export async function updateProductHandler(req: Request, res: Response, next: Ne
   }
 }
 
+export async function deleteProductHandler(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { tenantPrisma } = ctx(req);
+    res.json(await inventoryService.deleteProduct(tenantPrisma, requireParam(req, "id")));
+  } catch (err) {
+    next(err);
+  }
+}
+
 export async function listWarehousesHandler(req: Request, res: Response, next: NextFunction) {
   try {
     const { tenantPrisma } = ctx(req);
@@ -103,6 +114,25 @@ export async function createWarehouseHandler(req: Request, res: Response, next: 
     const { tenantPrisma, tenantId } = ctx(req);
     const input = v.createWarehouseSchema.parse(req.body);
     res.status(201).json(await inventoryService.createWarehouse(tenantPrisma, tenantId, input));
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function updateWarehouseHandler(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { tenantPrisma } = ctx(req);
+    const input = v.updateWarehouseSchema.parse(req.body);
+    res.json(await inventoryService.updateWarehouse(tenantPrisma, requireParam(req, "id"), input));
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function deleteWarehouseHandler(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { tenantPrisma } = ctx(req);
+    res.json(await inventoryService.deleteWarehouse(tenantPrisma, requireParam(req, "id")));
   } catch (err) {
     next(err);
   }
@@ -219,7 +249,20 @@ export async function listStockHandler(req: Request, res: Response, next: NextFu
 export async function listTransfersHandler(req: Request, res: Response, next: NextFunction) {
   try {
     const { tenantPrisma } = ctx(req);
-    res.json(await inventoryService.listTransfers(tenantPrisma));
+    const query = v.listTransfersQuerySchema.parse(req.query);
+    const { items, meta } = await inventoryService.listTransfers(tenantPrisma, query);
+    res.json(ok(items, meta));
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function getTransferHandler(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { tenantPrisma } = ctx(req);
+    const transfer = await inventoryService.getTransfer(tenantPrisma, requireParam(req, "id"));
+    if (!transfer) throw new AppError(404, "TRANSFER_NOT_FOUND", "Stock transfer not found");
+    res.json(transfer);
   } catch (err) {
     next(err);
   }

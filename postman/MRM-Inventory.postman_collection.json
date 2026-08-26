@@ -194,6 +194,25 @@
             "method": "GET",
             "url": "{{baseUrl}}/inventory/products/{{productId}}"
           }
+        },
+        {
+          "name": "Update Product",
+          "request": {
+            "method": "PATCH",
+            "url": "{{baseUrl}}/inventory/products/{{productId}}",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"USB Cable Updated\",\n  \"maximumStock\": 500,\n  \"status\": \"ACTIVE\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Delete Product",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/inventory/products/{{productId}}"
+          }
         }
       ]
     },
@@ -239,6 +258,25 @@
           "name": "Get Warehouse",
           "request": {
             "method": "GET",
+            "url": "{{baseUrl}}/inventory/warehouses/{{warehouseId}}"
+          }
+        },
+        {
+          "name": "Update Warehouse",
+          "request": {
+            "method": "PATCH",
+            "url": "{{baseUrl}}/inventory/warehouses/{{warehouseId}}",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Main Warehouse\",\n  \"address\": \"Dubai\",\n  \"status\": \"ACTIVE\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Delete Warehouse",
+          "request": {
+            "method": "DELETE",
             "url": "{{baseUrl}}/inventory/warehouses/{{warehouseId}}"
           }
         }
@@ -338,7 +376,14 @@
           "name": "List Transfers",
           "request": {
             "method": "GET",
-            "url": "{{baseUrl}}/inventory/transfers"
+            "url": "{{baseUrl}}/inventory/transfers?page=1&pageSize=20"
+          }
+        },
+        {
+          "name": "Get Transfer",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/inventory/transfers/{{transferId}}"
           }
         },
         {
