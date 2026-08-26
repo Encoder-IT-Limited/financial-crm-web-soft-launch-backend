@@ -366,6 +366,7 @@ model Invoice {
   balanceDue     Decimal       @default(0) @map("balance_due") @db.Decimal(14, 2)
   status         InvoiceStatus @default(DRAFT)
   source         String        @default("MANUAL")
+  currency       String?
   sentAt         DateTime?     @map("sent_at")
   lastReminderAt DateTime?     @map("last_reminder_at")
   fulfilledAt    DateTime?     @map("fulfilled_at")
@@ -447,6 +448,7 @@ model RecurringInvoiceTemplate {
   status          RecurringInvoiceStatus  @default(ACTIVE)
   kind            String                  @default("INVOICE")
   retainerId      String?                 @map("retainer_id") @db.Uuid
+  currency        String?
   createdAt       DateTime                @default(now()) @map("created_at")
 
   @@map("recurring_invoice_templates")
@@ -473,6 +475,7 @@ model Proposal {
   tax                 Decimal        @default(0) @db.Decimal(14, 2)
   total               Decimal        @default(0) @db.Decimal(14, 2)
   notes               String?
+  currency            String?
   status              ProposalStatus @default(DRAFT)
   sentAt              DateTime?      @map("sent_at")
   respondedAt         DateTime?      @map("responded_at")
@@ -489,6 +492,7 @@ model Proposal {
 model ProposalItem {
   id          String  @id @default(uuid()) @db.Uuid
   proposalId  String  @map("proposal_id") @db.Uuid
+  productId   String? @map("product_id") @db.Uuid
   description String
   quantity    Decimal @db.Decimal(14, 3)
   unitPrice   Decimal @map("unit_price") @db.Decimal(14, 2)
@@ -568,6 +572,7 @@ model CreditNote {
   creditNoteNumber  String   @map("credit_note_number")
   amount            Decimal  @db.Decimal(14, 2)
   reason            String
+  currency          String?
   linkedReturn      Boolean  @default(false) @map("linked_return")
   refundAmount      Decimal? @map("refund_amount") @db.Decimal(14, 2)
   status            String   @default("ISSUED")
@@ -585,6 +590,7 @@ model DebitNote {
   debitNoteNumber String   @map("debit_note_number")
   amount          Decimal  @db.Decimal(14, 2)
   reason          String
+  currency        String?
   status          String   @default("ISSUED")
   createdAt       DateTime @default(now()) @map("created_at")
 

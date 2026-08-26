@@ -8,6 +8,7 @@ export const invoicingRouter: Router = Router();
 invoicingRouter.use(authenticate);
 
 invoicingRouter.get("/invoices", c.listInvoicesHandler);
+invoicingRouter.get("/invoices/next-number", c.nextInvoiceNumberHandler);
 invoicingRouter.post("/invoices", requireTenantWritable, c.createInvoiceHandler);
 invoicingRouter.get("/invoices/:id", c.getInvoiceHandler);
 invoicingRouter.patch("/invoices/:id", requireTenantWritable, c.updateInvoiceHandler);
@@ -27,11 +28,13 @@ invoicingRouter.post(
 
 invoicingRouter.post("/credit-notes", requireTenantWritable, c.createCreditNoteHandler);
 invoicingRouter.get("/credit-notes", c.listCreditNotesHandler);
+invoicingRouter.get("/credit-notes/next-number", c.nextCreditNoteNumberHandler);
 invoicingRouter.post("/credit-notes/:id/void", requireTenantWritable, c.voidCreditNoteHandler);
 invoicingRouter.post("/credit-notes/:id/convert", requireTenantWritable, c.convertCreditNoteHandler);
 
 invoicingRouter.post("/debit-notes", requireTenantWritable, c.createDebitNoteHandler);
 invoicingRouter.get("/debit-notes", c.listDebitNotesHandler);
+invoicingRouter.get("/debit-notes/next-number", c.nextDebitNoteNumberHandler);
 invoicingRouter.post("/debit-notes/:id/void", requireTenantWritable, c.voidDebitNoteHandler);
 invoicingRouter.post("/debit-notes/:id/convert", requireTenantWritable, c.convertDebitNoteHandler);
 

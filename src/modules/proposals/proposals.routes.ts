@@ -8,6 +8,7 @@ export const proposalsRouter: Router = Router();
 proposalsRouter.use(authenticate);
 
 proposalsRouter.get("/", c.listProposalsHandler);
+proposalsRouter.get("/next-number", c.nextProposalNumberHandler);
 proposalsRouter.post("/", requireTenantWritable, c.createProposalHandler);
 proposalsRouter.get("/:id", c.getProposalHandler);
 proposalsRouter.patch("/:id", requireTenantWritable, c.updateProposalHandler);

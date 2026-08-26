@@ -1,6 +1,10 @@
 import { z } from "zod";
+import { listPageQuerySchema } from "../invoicing/invoicing.validation";
+
+export { listPageQuerySchema };
 
 export const proposalItemSchema = z.object({
+  productId: z.string().uuid().optional(),
   description: z.string().min(1),
   quantity: z.number().positive(),
   unitPrice: z.number().nonnegative(),
@@ -13,6 +17,7 @@ export const createProposalSchema = z.object({
   proposalDate: z.coerce.date(),
   expiryDate: z.coerce.date(),
   notes: z.string().optional(),
+  currency: z.string().min(3).max(8).optional(),
   items: z.array(proposalItemSchema).min(1),
   mode: z.enum(["draft", "send"]).optional(),
 });
@@ -22,5 +27,6 @@ export const updateProposalSchema = z.object({
   proposalDate: z.coerce.date().optional(),
   expiryDate: z.coerce.date().optional(),
   notes: z.string().nullable().optional(),
+  currency: z.string().min(3).max(8).optional(),
   items: z.array(proposalItemSchema).min(1),
 });

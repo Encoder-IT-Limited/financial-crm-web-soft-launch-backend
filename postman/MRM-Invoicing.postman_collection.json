@@ -37,6 +37,17 @@
           "request": { "method": "GET", "url": "{{baseUrl}}/invoices" }
         },
         {
+          "name": "List Invoices (paginated)",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/invoices?page=1&pageSize=10"
+          }
+        },
+        {
+          "name": "Next Invoice Number",
+          "request": { "method": "GET", "url": "{{baseUrl}}/invoices/next-number" }
+        },
+        {
           "name": "Create Invoice",
           "event": [{ "listen": "test", "script": { "exec": [
             "const res = pm.response.json();",
@@ -48,7 +59,7 @@
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"customerId\": \"{{customerId}}\",\n  \"dueDate\": \"2026-09-30\",\n  \"items\": [\n    {\n      \"description\": \"USB Cable\",\n      \"quantity\": 10,\n      \"unitPrice\": 5.00,\n      \"discount\": 0,\n      \"tax\": 2.50\n    }\n  ]\n}"
+              "raw": "{\n  \"customerId\": \"{{customerId}}\",\n  \"dueDate\": \"2026-09-30\",\n  \"currency\": \"BDT\",\n  \"items\": [\n    {\n      \"productId\": \"{{productId}}\",\n      \"description\": \"USB Cable\",\n      \"quantity\": 10,\n      \"unitPrice\": 5.00,\n      \"discount\": 0,\n      \"tax\": 2.50\n    }\n  ]\n}"
             }
           }
         },
@@ -101,7 +112,7 @@
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"customerId\": \"{{customerId}}\",\n  \"invoiceId\": \"{{invoiceId}}\",\n  \"amount\": 10.00,\n  \"reason\": \"Damaged item returned\",\n  \"linkedReturn\": true,\n  \"refundAmount\": 10.00,\n  \"warehouseId\": \"{{warehouseId}}\",\n  \"returnItems\": [\n    { \"productId\": \"{{productId}}\", \"quantity\": 2 }\n  ]\n}"
+              "raw": "{\n  \"customerId\": \"{{customerId}}\",\n  \"invoiceId\": \"{{invoiceId}}\",\n  \"amount\": 10.00,\n  \"reason\": \"Damaged item returned\",\n  \"currency\": \"BDT\",\n  \"linkedReturn\": true,\n  \"refundAmount\": 10.00,\n  \"warehouseId\": \"{{warehouseId}}\",\n  \"returnItems\": [\n    { \"productId\": \"{{productId}}\", \"quantity\": 2 }\n  ]\n}"
             }
           }
         }
@@ -113,6 +124,10 @@
         {
           "name": "List Recurring Templates",
           "request": { "method": "GET", "url": "{{baseUrl}}/recurring-templates" }
+        },
+        {
+          "name": "List Recurring Templates (paginated)",
+          "request": { "method": "GET", "url": "{{baseUrl}}/recurring-templates?page=1&pageSize=10" }
         },
         {
           "name": "Create Recurring Template",

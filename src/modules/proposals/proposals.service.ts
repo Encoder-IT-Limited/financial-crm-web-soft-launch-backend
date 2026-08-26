@@ -1,14 +1,21 @@
 import type { PrismaClient } from "../../generated/tenant-client/client";
 import { AppError } from "../../utils/errors";
+import { formatDocumentNumber, peekNextNumber } from "../../utils/documentNumber";
+import { parsePageQuery, pageMeta, isPagedQuery, type PageQuery } from "../../utils/pagination";
 import { computeInvoiceTotals, lineTotal } from "../invoicing/invoicing.totals";
 import { createInvoice } from "../invoicing/invoicing.service";
 
 async function generateProposalNumber(tenantPrisma: PrismaClient): Promise<string> {
   const count = await tenantPrisma.proposal.count();
-  return `PRO-${String(count + 1).padStart(6, "0")}`;
+  return formatDocumentNumber("PRO", count);
+}
+
+export function peekNextProposalNumber(tenantPrisma: PrismaClient) {
+  return peekNextNumber(() => tenantPrisma.proposal.count(), "PRO");
 }
 
 interface ProposalItemInput {
+  productId?: string;
   description: string;
   quantity: number;
   unitPrice: number;
@@ -21,6 +28,7 @@ interface CreateProposalInput {
   proposalDate: Date;
   expiryDate: Date;
   notes?: string;
+  currency?: string;
   items: ProposalItemInput[];
 }
 
@@ -48,10 +56,12 @@ export async function createProposal(
       tax: totals.tax,
       total: totals.total,
       notes: input.notes,
+      currency: input.currency,
       status: send ? "SENT" : "DRAFT",
       sentAt: send ? new Date() : null,
       items: {
         create: input.items.map((item) => ({
+          productId: item.productId,
           description: item.description,
           quantity: item.quantity,
           unitPrice: item.unitPrice,
@@ -67,8 +77,18 @@ export async function createProposal(
   return proposal;
 }
 
-export function listProposals(tenantPrisma: PrismaClient) {
-  return tenantPrisma.proposal.findMany({ include: { items: true }, orderBy: { createdAt: "desc" } });
+export async function listProposals(tenantPrisma: PrismaClient, query: PageQuery = {}) {
+  const { page, pageSize, skip } = parsePageQuery(query);
+  const paginate = isPagedQuery(query);
+  const [total, items] = await Promise.all([
+    tenantPrisma.proposal.count(),
+    tenantPrisma.proposal.findMany({
+      include: { items: true },
+      orderBy: { createdAt: "desc" },
+      ...(paginate ? { skip, take: pageSize } : {}),
+    }),
+  ]);
+  return { items, meta: pageMeta(total, paginate ? page : 1, paginate ? pageSize : total) };
 }
 
 export async function getProposal(tenantPrisma: PrismaClient, id: string) {
@@ -82,6 +102,7 @@ interface UpdateProposalInput {
   proposalDate?: Date;
   expiryDate?: Date;
   notes?: string | null;
+  currency?: string;
   items: ProposalItemInput[];
 }
 
@@ -107,12 +128,14 @@ export async function updateProposal(tenantPrisma: PrismaClient, id: string, inp
         proposalDate: input.proposalDate,
         expiryDate: input.expiryDate,
         notes: input.notes,
+        currency: input.currency,
         subtotal: totals.subtotal,
         discount: totals.discount,
         tax: totals.tax,
         total: totals.total,
         items: {
           create: input.items.map((item) => ({
+            productId: item.productId,
             description: item.description,
             quantity: item.quantity,
             unitPrice: item.unitPrice,
@@ -164,7 +187,9 @@ export async function convertProposal(tenantPrisma: PrismaClient, tenantId: stri
     customerId: proposal.customerId,
     dueDate: proposal.expiryDate,
     source: "ESTIMATE",
+    currency: proposal.currency ?? undefined,
     items: proposal.items.map((item) => ({
+      productId: item.productId ?? undefined,
       description: item.description,
       quantity: Number(item.quantity),
       unitPrice: Number(item.unitPrice),

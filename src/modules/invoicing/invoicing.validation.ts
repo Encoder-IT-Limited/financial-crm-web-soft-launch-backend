@@ -1,5 +1,12 @@
 import { z } from "zod";
 
+export const listPageQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).optional(),
+  pageSize: z.coerce.number().int().min(1).max(100).optional(),
+  limit: z.coerce.number().int().min(1).max(100).optional(),
+  offset: z.coerce.number().int().min(0).optional(),
+});
+
 export const invoiceItemSchema = z.object({
   productId: z.string().uuid().optional(),
   description: z.string().min(1),
@@ -14,6 +21,7 @@ export const createInvoiceSchema = z.object({
   dueDate: z.coerce.date(),
   items: z.array(invoiceItemSchema).min(1),
   source: z.string().optional(),
+  currency: z.string().min(3).max(8).optional(),
 });
 
 export const updateInvoiceSchema = z.object({
@@ -48,6 +56,7 @@ export const createCreditNoteSchema = z.object({
   invoiceId: z.string().uuid().optional(),
   amount: z.number().positive(),
   reason: z.string().min(1),
+  currency: z.string().min(3).max(8).optional(),
   linkedReturn: z.boolean().default(false),
   refundAmount: z.number().nonnegative().optional(),
   warehouseId: z.string().uuid().optional(),
@@ -59,6 +68,7 @@ export const createDebitNoteSchema = z.object({
   invoiceId: z.string().uuid().optional(),
   amount: z.number().positive(),
   reason: z.string().min(1),
+  currency: z.string().min(3).max(8).optional(),
 });
 
 export const createRecurringTemplateSchema = z.object({
@@ -69,6 +79,7 @@ export const createRecurringTemplateSchema = z.object({
   amount: z.number().positive(),
   description: z.string().min(1),
   autoSend: z.boolean().default(false),
+  currency: z.string().min(3).max(8).optional(),
   kind: z.enum(["INVOICE", "RETAINER_TOPUP"]).optional().default("INVOICE"),
   retainerId: z.string().uuid().optional(),
 });

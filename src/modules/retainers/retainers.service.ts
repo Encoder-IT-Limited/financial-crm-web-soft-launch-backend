@@ -16,7 +16,7 @@ interface CreateRetainerInput {
   contractAmount: number;
   billingPeriod: string;
   billingModel: "ONE_TIME" | "RECURRING";
-  currency: string;
+  currency?: string;
   startDate: Date;
   expiryDate?: Date;
   notes?: string;
@@ -42,7 +42,7 @@ export async function createRetainer(
       remainingBalance: input.contractAmount,
       billingPeriod: input.billingPeriod,
       billingModel: input.billingModel,
-      currency: input.currency,
+      currency: input.currency ?? "AED",
       status: "ACTIVE",
       startDate: input.startDate,
       expiryDate: input.expiryDate,
@@ -363,12 +363,28 @@ export async function forfeitRetainer(tenantPrisma: PrismaClient, id: string) {
   });
 }
 
+/** Exported for tests — reject over-balance refunds instead of silently capping. */
+export function resolveRefundAmount(remaining: number, requested?: number): number {
+  if (remaining <= 0) {
+    throw new AppError(409, "INSUFFICIENT_BALANCE", "Retainer has no remaining balance to refund");
+  }
+  if (requested != null && requested > remaining + 1e-9) {
+    throw new AppError(
+      400,
+      "REFUND_EXCEEDS_BALANCE",
+      `Requested refund (${requested}) exceeds remaining balance (${remaining})`,
+    );
+  }
+  return requested ?? remaining;
+}
+
 export async function refundRetainer(
   tenantPrisma: PrismaClient,
   tenantId: string,
   id: string,
   reason: string,
   userId: string,
+  requestedAmount?: number,
 ) {
   const retainer = await getRetainer(tenantPrisma, id);
   if (retainer.status === "CLOSED") {
@@ -376,9 +392,7 @@ export async function refundRetainer(
   }
 
   const remaining = Number(retainer.remainingBalance);
-  if (remaining <= 0) {
-    throw new AppError(409, "INSUFFICIENT_BALANCE", "Retainer has no remaining balance to refund");
-  }
+  const refundAmount = resolveRefundAmount(remaining, requestedAmount);
 
   const creditNote = await createCreditNote(
     tenantPrisma,
@@ -387,31 +401,33 @@ export async function refundRetainer(
       customerId: retainer.customerId,
       // Standalone CN so convert-to-invoice pattern works; funding invoice
       // referenced in the reason text (plan Key Decision #6).
-      amount: remaining,
+      amount: refundAmount,
       reason: `Retainer refund ${retainer.retainerNumber}: ${reason}${
         retainer.fundingInvoiceId ? ` (funding invoice ${retainer.fundingInvoiceId})` : ""
       }`,
+      currency: retainer.currency,
       linkedReturn: false,
-      refundAmount: remaining,
+      refundAmount,
     },
     userId,
   );
 
+  const nextBalance = remaining - refundAmount;
   const updated = await tenantPrisma.$transaction(async (tx) => {
     await tx.retainerUsage.create({
       data: {
         retainerId: id,
         date: new Date(),
-        amount: remaining,
+        amount: refundAmount,
         note: `Refund: ${reason}`,
       },
     });
     return tx.retainer.update({
       where: { id },
       data: {
-        remainingBalance: 0,
-        status: "CLOSED",
-        dispositionReason: "REFUND",
+        remainingBalance: nextBalance,
+        status: nextBalance <= 1e-9 ? "CLOSED" : retainer.status,
+        dispositionReason: nextBalance <= 1e-9 ? "REFUND" : retainer.dispositionReason,
         refundAdjustmentId: creditNote.id,
       },
       include: { usage: { orderBy: { createdAt: "desc" } } },

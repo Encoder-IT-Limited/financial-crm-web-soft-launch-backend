@@ -1,5 +1,8 @@
 import type { PrismaClient, Prisma, Invoice } from "../../generated/tenant-client/client";
 import { AppError } from "../../utils/errors";
+import { resolveCurrency } from "../../utils/currency";
+import { formatDocumentNumber, peekNextNumber } from "../../utils/documentNumber";
+import { parsePageQuery, pageMeta, isPagedQuery, type PageQuery, type PageResult } from "../../utils/pagination";
 import { emitAccountingEvent } from "../accounting/accounting.service";
 import { receiveStockCore, issueStockCore } from "../inventory/inventory.service";
 import { computeInvoiceTotals, isOverdue, lineTotal } from "./invoicing.totals";
@@ -9,11 +12,13 @@ export { isOverdue, computeInvoiceTotals };
 type Db = PrismaClient | Prisma.TransactionClient;
 
 export function toInvoiceResponse(
-  invoice: Invoice & { items?: unknown; payments?: unknown[]; overdue?: boolean },
+  invoice: Invoice & { items?: unknown; payments?: unknown[]; overdue?: boolean; currency?: string | null },
   rootDomain: string,
+  tenantCurrency?: string | null,
 ) {
   return {
     ...invoice,
+    currency: resolveCurrency(invoice.currency, tenantCurrency),
     overdue: isOverdue(invoice),
     // Default QR/payment-link target per docs/requirements-qa.md — no real
     // payment gateway wired up yet, so this points at a page that doesn't
@@ -24,11 +29,20 @@ export function toInvoiceResponse(
 }
 
 async function generateInvoiceNumber(db: Db): Promise<string> {
-  // Simple v1 scheme: count-based. Not safe under high concurrent write
-  // volume (race between count and create) — fine for the current scale,
-  // revisit with a dedicated sequence table if that ever becomes real.
   const count = await db.invoice.count();
-  return `INV-${String(count + 1).padStart(6, "0")}`;
+  return formatDocumentNumber("INV", count);
+}
+
+export function peekNextInvoiceNumber(tenantPrisma: PrismaClient) {
+  return peekNextNumber(() => tenantPrisma.invoice.count(), "INV");
+}
+
+export function peekNextCreditNoteNumber(tenantPrisma: PrismaClient) {
+  return peekNextNumber(() => tenantPrisma.creditNote.count(), "CN");
+}
+
+export function peekNextDebitNoteNumber(tenantPrisma: PrismaClient) {
+  return peekNextNumber(() => tenantPrisma.debitNote.count(), "DN");
 }
 
 interface CreateInvoiceInput {
@@ -36,6 +50,7 @@ interface CreateInvoiceInput {
   dueDate: Date;
   items: { productId?: string; description: string; quantity: number; unitPrice: number; discount: number; tax: number }[];
   source?: string;
+  currency?: string;
 }
 
 export async function createInvoiceCore(db: Db, tenantId: string, input: CreateInvoiceInput) {
@@ -55,6 +70,7 @@ export async function createInvoiceCore(db: Db, tenantId: string, input: CreateI
       balanceDue: totals.total,
       status: "DRAFT",
       source: input.source ?? "MANUAL",
+      currency: input.currency,
       items: {
         create: input.items.map((item) => ({
           productId: item.productId,
@@ -127,18 +143,35 @@ export async function updateInvoice(
   });
 }
 
-export async function listInvoices(tenantPrisma: PrismaClient) {
-  const [invoices, payments] = await Promise.all([
-    tenantPrisma.invoice.findMany({ include: { items: true }, orderBy: { createdAt: "desc" } }),
-    tenantPrisma.payment.findMany({ where: { referenceType: "INVOICE" }, orderBy: { paymentDate: "desc" } }),
+export async function listInvoices(tenantPrisma: PrismaClient, query: PageQuery = {}) {
+  const { page, pageSize, skip } = parsePageQuery(query);
+  const paginate = isPagedQuery(query);
+
+  const [total, invoices] = await Promise.all([
+    tenantPrisma.invoice.count(),
+    tenantPrisma.invoice.findMany({
+      include: { items: true },
+      orderBy: { createdAt: "desc" },
+      ...(paginate ? { skip, take: pageSize } : {}),
+    }),
   ]);
+
+  const payments = await tenantPrisma.payment.findMany({
+    where: { referenceType: "INVOICE", referenceId: { in: invoices.map((i) => i.id) } },
+    orderBy: { paymentDate: "desc" },
+  });
   const byInvoice = new Map<string, typeof payments>();
   for (const payment of payments) {
     const list = byInvoice.get(payment.referenceId) ?? [];
     list.push(payment);
     byInvoice.set(payment.referenceId, list);
   }
-  return invoices.map((invoice) => ({ ...invoice, payments: byInvoice.get(invoice.id) ?? [] }));
+
+  const items = invoices.map((invoice) => ({ ...invoice, payments: byInvoice.get(invoice.id) ?? [] }));
+  return {
+    items,
+    meta: pageMeta(total, paginate ? page : 1, paginate ? pageSize : total),
+  } satisfies PageResult<(typeof items)[number]>;
 }
 
 export async function getInvoice(tenantPrisma: PrismaClient, id: string) {
@@ -510,6 +543,7 @@ interface CreateCreditNoteInput {
   invoiceId?: string;
   amount: number;
   reason: string;
+  currency?: string;
   linkedReturn: boolean;
   refundAmount?: number;
   warehouseId?: string;
@@ -538,6 +572,7 @@ export async function createCreditNote(
         creditNoteNumber,
         amount: input.amount,
         reason: input.reason,
+        currency: input.currency,
         linkedReturn: input.linkedReturn,
         refundAmount: input.refundAmount,
       },
@@ -583,8 +618,17 @@ export async function createCreditNote(
   });
 }
 
-export function listCreditNotes(tenantPrisma: PrismaClient) {
-  return tenantPrisma.creditNote.findMany({ orderBy: { createdAt: "desc" } });
+export async function listCreditNotes(tenantPrisma: PrismaClient, query: PageQuery = {}) {
+  const { page, pageSize, skip } = parsePageQuery(query);
+  const paginate = isPagedQuery(query);
+  const [total, items] = await Promise.all([
+    tenantPrisma.creditNote.count(),
+    tenantPrisma.creditNote.findMany({
+      orderBy: { createdAt: "desc" },
+      ...(paginate ? { skip, take: pageSize } : {}),
+    }),
+  ]);
+  return { items, meta: pageMeta(total, paginate ? page : 1, paginate ? pageSize : total) };
 }
 
 export async function voidCreditNote(tenantPrisma: PrismaClient, id: string) {
@@ -620,6 +664,7 @@ interface CreateDebitNoteInput {
   invoiceId?: string;
   amount: number;
   reason: string;
+  currency?: string;
 }
 
 export async function createDebitNote(
@@ -638,6 +683,7 @@ export async function createDebitNote(
         debitNoteNumber,
         amount: input.amount,
         reason: input.reason,
+        currency: input.currency,
       },
     });
 
@@ -661,8 +707,17 @@ export async function createDebitNote(
   });
 }
 
-export function listDebitNotes(tenantPrisma: PrismaClient) {
-  return tenantPrisma.debitNote.findMany({ orderBy: { createdAt: "desc" } });
+export async function listDebitNotes(tenantPrisma: PrismaClient, query: PageQuery = {}) {
+  const { page, pageSize, skip } = parsePageQuery(query);
+  const paginate = isPagedQuery(query);
+  const [total, items] = await Promise.all([
+    tenantPrisma.debitNote.count(),
+    tenantPrisma.debitNote.findMany({
+      orderBy: { createdAt: "desc" },
+      ...(paginate ? { skip, take: pageSize } : {}),
+    }),
+  ]);
+  return { items, meta: pageMeta(total, paginate ? page : 1, paginate ? pageSize : total) };
 }
 
 export async function voidDebitNote(tenantPrisma: PrismaClient, id: string) {
@@ -706,6 +761,7 @@ export async function convertNoteToInvoice(
       customerId: note.customerId,
       dueDate: advance(new Date(), "WEEKLY"),
       source: "CREDIT_NOTE",
+      currency: note.currency ?? undefined,
       items: [
         {
           description: `${note.creditNoteNumber} — ${note.reason}`,
@@ -729,6 +785,7 @@ export async function convertNoteToInvoice(
     customerId: note.customerId,
     dueDate: advance(new Date(), "WEEKLY"),
     source: "DEBIT_NOTE",
+    currency: note.currency ?? undefined,
     items: [
       {
         description: `${note.debitNoteNumber} — ${note.reason}`,
@@ -753,6 +810,7 @@ interface CreateRecurringTemplateInput {
   amount: number;
   description: string;
   autoSend: boolean;
+  currency?: string;
   kind?: "INVOICE" | "RETAINER_TOPUP";
   retainerId?: string;
 }
@@ -773,14 +831,24 @@ export function createRecurringTemplate(
       amount: input.amount,
       description: input.description,
       autoSend: input.autoSend,
+      currency: input.currency,
       kind: input.kind ?? "INVOICE",
       retainerId: input.retainerId,
     },
   });
 }
 
-export function listRecurringTemplates(tenantPrisma: PrismaClient) {
-  return tenantPrisma.recurringInvoiceTemplate.findMany({ orderBy: { createdAt: "desc" } });
+export async function listRecurringTemplates(tenantPrisma: PrismaClient, query: PageQuery = {}) {
+  const { page, pageSize, skip } = parsePageQuery(query);
+  const paginate = isPagedQuery(query);
+  const [total, items] = await Promise.all([
+    tenantPrisma.recurringInvoiceTemplate.count(),
+    tenantPrisma.recurringInvoiceTemplate.findMany({
+      orderBy: { createdAt: "desc" },
+      ...(paginate ? { skip, take: pageSize } : {}),
+    }),
+  ]);
+  return { items, meta: pageMeta(total, paginate ? page : 1, paginate ? pageSize : total) };
 }
 
 export async function setRecurringTemplateStatus(
@@ -870,6 +938,7 @@ export async function generateRecurringTemplate(
     customerId: template.customerId,
     dueDate: advance(new Date(), "WEEKLY"),
     source: isTopUp ? "RETAINER_TOPUP" : "RECURRING",
+    currency: template.currency ?? undefined,
     items: [
       {
         description: template.description,
@@ -951,6 +1020,8 @@ export async function generateDueRecurringInvoices(tenantPrisma: PrismaClient, t
     const invoice = await createInvoice(tenantPrisma, tenantId, {
       customerId: template.customerId,
       dueDate: advance(new Date(), "WEEKLY"), // default 7-day payment term; not the recurrence interval
+      source: "RECURRING",
+      currency: template.currency ?? undefined,
       items: [{ description: template.description, quantity: 1, unitPrice: Number(template.amount), discount: 0, tax: 0 }],
     });
 

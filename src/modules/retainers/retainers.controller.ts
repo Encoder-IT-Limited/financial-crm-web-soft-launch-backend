@@ -2,6 +2,7 @@ import type { Request, Response, NextFunction } from "express";
 import { requireParam } from "../../utils/params";
 import { requireTenantAuth } from "../../utils/tenantContext";
 import { env } from "../../config/env";
+import { resolveCurrency } from "../../utils/currency";
 import { toInvoiceResponse } from "../invoicing/invoicing.service";
 import * as v from "./retainers.validation";
 import * as retainersService from "./retainers.service";
@@ -26,9 +27,14 @@ export async function getRetainerHandler(req: Request, res: Response, next: Next
 
 export async function createRetainerHandler(req: Request, res: Response, next: NextFunction) {
   try {
-    const { tenantPrisma, tenantId } = requireTenantAuth(req);
+    const { tenantPrisma, tenantId, tenant } = requireTenantAuth(req);
     const input = v.createRetainerSchema.parse(req.body);
-    res.status(201).json(await retainersService.createRetainer(tenantPrisma, tenantId, input));
+    res.status(201).json(
+      await retainersService.createRetainer(tenantPrisma, tenantId, {
+        ...input,
+        currency: resolveCurrency(input.currency, tenant.currency),
+      }),
+    );
   } catch (err) {
     next(err);
   }
@@ -68,7 +74,7 @@ export async function drawRetainerHandler(req: Request, res: Response, next: Nex
     res.json({
       retainer: result.retainer,
       payment: result.payment,
-      invoice: toInvoiceResponse(result.invoice, env.ROOT_DOMAIN),
+      invoice: toInvoiceResponse(result.invoice, env.ROOT_DOMAIN, req.tenant?.currency),
     });
   } catch (err) {
     next(err);
@@ -119,7 +125,14 @@ export async function refundRetainerHandler(req: Request, res: Response, next: N
     const { tenantPrisma, tenantId, userId } = requireTenantAuth(req);
     const input = v.refundRetainerSchema.parse(req.body);
     res.json(
-      await retainersService.refundRetainer(tenantPrisma, tenantId, requireParam(req, "id"), input.reason, userId),
+      await retainersService.refundRetainer(
+        tenantPrisma,
+        tenantId,
+        requireParam(req, "id"),
+        input.reason,
+        userId,
+        input.amount,
+      ),
     );
   } catch (err) {
     next(err);

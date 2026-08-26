@@ -5,7 +5,7 @@ export const createRetainerSchema = z.object({
   contractAmount: z.number().positive(),
   billingPeriod: z.string().min(1),
   billingModel: z.enum(["ONE_TIME", "RECURRING"]).default("ONE_TIME"),
-  currency: z.string().min(1).default("AED"),
+  currency: z.string().min(3).max(8).optional(),
   startDate: z.coerce.date(),
   expiryDate: z.coerce.date().optional(),
   notes: z.string().optional(),
@@ -47,4 +47,5 @@ export const rollOverRetainerSchema = z.object({
 
 export const refundRetainerSchema = z.object({
   reason: z.string().min(1),
+  amount: z.number().positive().optional(),
 });
