@@ -7,7 +7,14 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
   ADMIN: ["*"],
   MANAGER: ["inventory.*", "procurement.*", "pos.*", "invoice.*", "customer.*"],
   INVENTORY_MANAGER: ["inventory.*", "procurement.*"],
-  SALES_CASHIER: ["pos.*", "invoice.view", "invoice.create", "customer.*"],
+  SALES_CASHIER: [
+    "pos.view",
+    "pos.createSale",
+    "pos.refund",
+    "invoice.view",
+    "invoice.create",
+    "customer.*",
+  ],
   ACCOUNTANT: ["invoice.*", "customer.view"],
   VIEWER: ["*.view"],
 };

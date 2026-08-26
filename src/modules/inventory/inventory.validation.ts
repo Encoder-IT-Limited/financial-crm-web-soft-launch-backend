@@ -60,6 +60,14 @@ export const issueStockSchema = z.object({
   referenceId: z.string().uuid().optional(),
 });
 
+export const writeOffDamagedSchema = z.object({
+  productId: z.string().uuid(),
+  warehouseId: z.string().uuid(),
+  quantity: z.number().positive(),
+  referenceType: z.string().optional(),
+  referenceId: z.string().uuid().optional(),
+});
+
 export const adjustStockSchema = z.object({
   productId: z.string().uuid(),
   warehouseId: z.string().uuid(),

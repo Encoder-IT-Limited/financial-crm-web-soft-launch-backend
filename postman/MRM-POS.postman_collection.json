@@ -11,6 +11,11 @@
     { "key": "saleId", "value": "" },
     { "key": "warehouseId", "value": "" },
     { "key": "productId", "value": "" },
+    { "key": "productId2", "value": "" },
+    { "key": "discountRuleId", "value": "" },
+    { "key": "syncFailureId", "value": "" },
+    { "key": "barcode", "value": "1234567890123" },
+    { "key": "managerPin", "value": "1234" },
     { "key": "tenantSubdomain", "value": "acme" }
   ],
   "event": [
@@ -75,6 +80,10 @@
           }
         },
         {
+          "name": "List Sessions",
+          "request": { "method": "GET", "url": "{{baseUrl}}/pos/sessions?status=OPEN" }
+        },
+        {
           "name": "Close Session",
           "request": {
             "method": "POST",
@@ -89,11 +98,52 @@
       ]
     },
     {
+      "name": "Catalog & discounts",
+      "item": [
+        {
+          "name": "Lookup barcode",
+          "request": { "method": "GET", "url": "{{baseUrl}}/pos/lookup/barcode/{{barcode}}" }
+        },
+        {
+          "name": "Set manager PIN",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/pos/manager-pin",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"pin\": \"{{managerPin}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "List discount rules",
+          "request": { "method": "GET", "url": "{{baseUrl}}/pos/discount-rules" }
+        },
+        {
+          "name": "Create discount rule",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "const res = pm.response.json();",
+            "if (res.success) pm.collectionVariables.set('discountRuleId', res.data.id);"
+          ]}}],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/pos/discount-rules",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"10% off\",\n  \"type\": \"PERCENTAGE\",\n  \"value\": 10\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
       "name": "Sales",
       "item": [
         {
           "name": "List Sales",
-          "request": { "method": "GET", "url": "{{baseUrl}}/pos/sales" }
+          "request": { "method": "GET", "url": "{{baseUrl}}/pos/sales?posSessionId={{sessionId}}" }
         },
         {
           "name": "Create Sale",
@@ -107,13 +157,29 @@
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"posSessionId\": \"{{sessionId}}\",\n  \"items\": [\n    {\n      \"productId\": \"{{productId}}\",\n      \"quantity\": 2,\n      \"unitPrice\": 5.00,\n      \"discount\": 0,\n      \"tax\": 0.50\n    }\n  ],\n  \"payments\": [\n    {\n      \"paymentMethod\": \"CASH\",\n      \"amount\": 10.50\n    }\n  ]\n}"
+              "raw": "{\n  \"posSessionId\": \"{{sessionId}}\",\n  \"items\": [\n    {\n      \"productId\": \"{{productId}}\",\n      \"quantity\": 2,\n      \"unitPrice\": 5.00\n    }\n  ],\n  \"payments\": [\n    {\n      \"paymentMethod\": \"CASH\",\n      \"amount\": 10.00\n    }\n  ]\n}"
+            }
+          }
+        },
+        {
+          "name": "Create sale with rule discount",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/pos/sales",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"posSessionId\": \"{{sessionId}}\",\n  \"items\": [\n    {\n      \"productId\": \"{{productId}}\",\n      \"quantity\": 1,\n      \"unitPrice\": 10.00,\n      \"discountRuleId\": \"{{discountRuleId}}\"\n    }\n  ],\n  \"payments\": [\n    {\n      \"paymentMethod\": \"CASH\",\n      \"amount\": 9.00\n    }\n  ]\n}"
             }
           }
         },
         {
           "name": "Get Sale",
           "request": { "method": "GET", "url": "{{baseUrl}}/pos/sales/{{saleId}}" }
+        },
+        {
+          "name": "Get receipt (ESC/POS payload)",
+          "request": { "method": "GET", "url": "{{baseUrl}}/pos/sales/{{saleId}}/receipt" }
         },
         {
           "name": "Refund Sale",
@@ -123,13 +189,74 @@
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"items\": [\n    {\n      \"productId\": \"{{productId}}\",\n      \"quantity\": 1,\n      \"unitPrice\": 5.00,\n      \"condition\": \"SELLABLE\"\n    }\n  ],\n  \"reason\": \"Customer changed mind\"\n}"
+              "raw": "{\n  \"managerPin\": \"{{managerPin}}\",\n  \"items\": [\n    {\n      \"productId\": \"{{productId}}\",\n      \"quantity\": 1,\n      \"unitPrice\": 5.00,\n      \"condition\": \"SELLABLE\"\n    }\n  ],\n  \"reason\": \"Customer changed mind\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Refund damaged (quarantine)",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/pos/sales/{{saleId}}/refund",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"managerPin\": \"{{managerPin}}\",\n  \"items\": [\n    {\n      \"productId\": \"{{productId}}\",\n      \"quantity\": 1,\n      \"unitPrice\": 5.00,\n      \"condition\": \"DAMAGED\"\n    }\n  ],\n  \"reason\": \"Broken on return\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Exchange Sale",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/pos/sales/{{saleId}}/exchange",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"managerPin\": \"{{managerPin}}\",\n  \"returns\": [\n    {\n      \"productId\": \"{{productId}}\",\n      \"quantity\": 1,\n      \"unitPrice\": 5.00,\n      \"condition\": \"SELLABLE\"\n    }\n  ],\n  \"replacements\": [\n    {\n      \"productId\": \"{{productId2}}\",\n      \"quantity\": 1,\n      \"unitPrice\": 8.00\n    }\n  ],\n  \"payments\": [\n    {\n      \"paymentMethod\": \"CASH\",\n      \"amount\": 3.00\n    }\n  ],\n  \"reason\": \"Size exchange\"\n}"
             }
           }
         },
         {
           "name": "Void Sale",
-          "request": { "method": "POST", "url": "{{baseUrl}}/pos/sales/{{saleId}}/void" }
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/pos/sales/{{saleId}}/void",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"managerPin\": \"{{managerPin}}\"\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Offline sync queue",
+      "item": [
+        {
+          "name": "List sync failures",
+          "request": { "method": "GET", "url": "{{baseUrl}}/pos/sync-failures?status=PENDING" }
+        },
+        {
+          "name": "Report sync failure",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "const res = pm.response.json();",
+            "if (res.success) pm.collectionVariables.set('syncFailureId', res.data.id);"
+          ]}}],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/pos/sync-failures",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"deviceId\": \"POS-DEVICE-1\",\n  \"offlineTransactionKey\": \"offline-1\",\n  \"lastError\": \"retries exhausted\",\n  \"payload\": {\n    \"posSessionId\": \"{{sessionId}}\",\n    \"isOfflineSync\": true,\n    \"deviceId\": \"POS-DEVICE-1\",\n    \"offlineTransactionKey\": \"offline-1\",\n    \"items\": [{ \"productId\": \"{{productId}}\", \"quantity\": 1, \"unitPrice\": 5 }],\n    \"payments\": [{ \"paymentMethod\": \"CASH\", \"amount\": 5 }]\n  }\n}"
+            }
+          }
+        },
+        {
+          "name": "Retry sync failure",
+          "request": { "method": "POST", "url": "{{baseUrl}}/pos/sync-failures/{{syncFailureId}}/retry" }
         }
       ]
     }

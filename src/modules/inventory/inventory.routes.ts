@@ -15,6 +15,7 @@ inventoryRouter.get("/units", c.listUnitsHandler);
 inventoryRouter.post("/units", requireTenantWritable, c.createUnitHandler);
 
 inventoryRouter.get("/products", c.listProductsHandler);
+inventoryRouter.get("/products/lookup", c.lookupProductByBarcodeHandler);
 inventoryRouter.post("/products", requireTenantWritable, c.createProductHandler);
 inventoryRouter.get("/products/:id", c.getProductHandler);
 inventoryRouter.patch("/products/:id", requireTenantWritable, c.updateProductHandler);
@@ -33,6 +34,12 @@ inventoryRouter.post(
   requireTenantWritable,
   requireRole("OWNER", "MANAGER"),
   c.adjustStockHandler,
+);
+inventoryRouter.post(
+  "/stock/write-off-damaged",
+  requireTenantWritable,
+  requireRole("OWNER", "MANAGER"),
+  c.writeOffDamagedHandler,
 );
 
 inventoryRouter.post("/transfers", requireTenantWritable, c.requestTransferHandler);

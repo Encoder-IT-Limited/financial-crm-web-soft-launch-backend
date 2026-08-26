@@ -154,6 +154,13 @@
           }
         },
         {
+          "name": "Lookup product by barcode",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/inventory/products/lookup?barcode=6281000000012"
+          }
+        },
+        {
           "name": "Create Product",
           "event": [
             {
@@ -302,6 +309,23 @@
             "body": {
               "mode": "raw",
               "raw": "{\n  \"productId\": \"{{productId}}\",\n  \"warehouseId\": \"{{warehouseId}}\",\n  \"quantityDelta\": -3\n}"
+            }
+          }
+        },
+        {
+          "name": "Write off damaged stock",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/inventory/stock/write-off-damaged",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"productId\": \"{{productId}}\",\n  \"warehouseId\": \"{{warehouseId}}\",\n  \"quantity\": 1\n}"
             }
           }
         }

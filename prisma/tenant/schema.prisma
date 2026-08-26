@@ -40,8 +40,9 @@ model User {
   name         String
   email        String     @unique
   phone        String?
-  passwordHash String     @map("password_hash")
-  role         Role       @default(OWNER)
+  passwordHash   String     @map("password_hash")
+  managerPinHash String?    @map("manager_pin_hash")
+  role           Role       @default(OWNER)
   status       UserStatus @default(ACTIVE)
   lastLoginAt  DateTime?  @map("last_login_at")
   createdAt    DateTime   @default(now()) @map("created_at")
@@ -145,6 +146,7 @@ model Product {
   batches        Batch[]
 
   @@unique([sku])
+  @@index([barcode])
   @@map("products")
 }
 
@@ -189,6 +191,7 @@ model StockBalance {
   warehouseId      String  @map("warehouse_id") @db.Uuid
   productId        String  @map("product_id") @db.Uuid
   quantity         Decimal @default(0) @db.Decimal(14, 3)
+  damagedQuantity  Decimal @default(0) @map("damaged_quantity") @db.Decimal(14, 3)
   reservedQuantity Decimal @default(0) @map("reserved_quantity") @db.Decimal(14, 3)
   averageCost      Decimal @default(0) @map("average_cost") @db.Decimal(14, 4)
 
@@ -211,6 +214,7 @@ enum StockMovementType {
   DAMAGE
   EXPIRY
   MANUAL_ISSUE
+  QUARANTINE
 }
 
 // quantity is signed uniformly across every movement type: positive = into
@@ -369,6 +373,7 @@ model Invoice {
 
   items         InvoiceItem[]
   fulfillments  InvoiceFulfillment[]
+  sale          Sale?
 
   @@unique([invoiceNumber])
   @@map("invoices")
@@ -729,6 +734,8 @@ model PosTerminal {
   name              String
   code              String
   deviceIdentifier  String?  @map("device_identifier")
+  /// bcrypt hash of the terminal access code used when starting a shift
+  accessCodeHash    String?  @map("access_code_hash")
   status            String   @default("ACTIVE")
   createdAt         DateTime @default(now()) @map("created_at")
 
@@ -748,6 +755,8 @@ model PosSession {
   tenantId     String           @map("tenant_id") @db.Uuid
   terminalId   String           @map("terminal_id") @db.Uuid
   cashierId    String           @map("cashier_id") @db.Uuid
+  /// Display name entered at shift start (auth identity remains cashierId)
+  cashierName  String?          @map("cashier_name")
   openingCash  Decimal          @map("opening_cash") @db.Decimal(14, 2)
   closingCash  Decimal?         @map("closing_cash") @db.Decimal(14, 2)
   expectedCash Decimal?         @map("expected_cash") @db.Decimal(14, 2)
@@ -766,6 +775,62 @@ enum SaleStatus {
   PARTIALLY_REFUNDED
   REFUNDED
   VOIDED
+  EXCHANGED
+}
+
+enum PosDiscountType {
+  PERCENTAGE
+  FIXED
+}
+
+enum PosSyncFailureStatus {
+  PENDING
+  RESOLVED
+  DISCARDED
+}
+
+enum SaleExchangeDirection {
+  RETURN
+  REPLACE
+}
+
+enum SaleReturnCondition {
+  SELLABLE
+  DAMAGED
+}
+
+// Pre-configured discounts cashiers may apply without a manager PIN.
+// Manager-override discounts (arbitrary amounts) require a PIN.
+model PosDiscountRule {
+  id        String          @id @default(uuid()) @db.Uuid
+  tenantId  String          @map("tenant_id") @db.Uuid
+  name      String
+  type      PosDiscountType
+  value     Decimal         @db.Decimal(14, 2)
+  active    Boolean         @default(true)
+  createdAt DateTime        @default(now()) @map("created_at")
+
+  @@map("pos_discount_rules")
+}
+
+// Client reports here after automatic offline-sync retries are exhausted
+// (docs/requirements-qa.md). Nothing in the payload is silently dropped.
+model PosSyncFailure {
+  id                    String               @id @default(uuid()) @db.Uuid
+  tenantId              String               @map("tenant_id") @db.Uuid
+  deviceId              String               @map("device_id")
+  offlineTransactionKey String               @map("offline_transaction_key")
+  payload               Json
+  lastError             String               @map("last_error")
+  attemptCount          Int                  @default(1) @map("attempt_count")
+  status                PosSyncFailureStatus @default(PENDING)
+  createdAt             DateTime             @default(now()) @map("created_at")
+  updatedAt             DateTime             @updatedAt @map("updated_at")
+  resolvedAt            DateTime?            @map("resolved_at")
+  resolvedBy            String?              @map("resolved_by") @db.Uuid
+
+  @@unique([deviceId, offlineTransactionKey])
+  @@map("pos_sync_failures")
 }
 
 // deviceId + offlineTransactionKey implement the idempotency rule from
@@ -780,6 +845,7 @@ model Sale {
   warehouseId            String     @map("warehouse_id") @db.Uuid
   customerId             String?    @map("customer_id") @db.Uuid
   posSessionId           String?    @map("pos_session_id") @db.Uuid
+  invoiceId              String?    @unique @map("invoice_id") @db.Uuid
   transactionNumber      String     @map("transaction_number")
   transactionDate        DateTime   @default(now()) @map("transaction_date")
   subtotal               Decimal    @default(0) @db.Decimal(14, 2)
@@ -789,10 +855,13 @@ model Sale {
   status                 SaleStatus @default(COMPLETED)
   deviceId               String?    @map("device_id")
   offlineTransactionKey  String?    @map("offline_transaction_key")
+  approvedBy             String?    @map("approved_by") @db.Uuid
   createdAt              DateTime   @default(now()) @map("created_at")
 
-  items   SaleItem[]
-  returns SaleReturn[]
+  invoice    Invoice?       @relation(fields: [invoiceId], references: [id])
+  items      SaleItem[]
+  returns    SaleReturn[]
+  exchanges  SaleExchange[]
 
   @@unique([deviceId, offlineTransactionKey])
   @@unique([transactionNumber])
@@ -800,25 +869,24 @@ model Sale {
 }
 
 model SaleItem {
-  id          String  @id @default(uuid()) @db.Uuid
-  saleId      String  @map("sale_id") @db.Uuid
-  productId   String  @map("product_id") @db.Uuid
-  quantity    Decimal @db.Decimal(14, 3)
-  unitPrice   Decimal @map("unit_price") @db.Decimal(14, 2)
-  discount    Decimal @default(0) @db.Decimal(14, 2)
-  tax         Decimal @default(0) @db.Decimal(14, 2)
-  total       Decimal @db.Decimal(14, 2)
+  id             String  @id @default(uuid()) @db.Uuid
+  saleId         String  @map("sale_id") @db.Uuid
+  productId      String  @map("product_id") @db.Uuid
+  discountRuleId String? @map("discount_rule_id") @db.Uuid
+  quantity       Decimal @db.Decimal(14, 3)
+  unitPrice      Decimal @map("unit_price") @db.Decimal(14, 2)
+  discount       Decimal @default(0) @db.Decimal(14, 2)
+  tax            Decimal @default(0) @db.Decimal(14, 2)
+  total          Decimal @db.Decimal(14, 2)
 
   sale Sale @relation(fields: [saleId], references: [id])
 
   @@map("sale_items")
 }
 
-// Sellable-condition items automatically restock; damaged items are simply
-// excluded from restocking (quarantined) — a manager writes them off
-// separately via the inventory adjustment flow. See
-// docs/requirements-qa.md "Will returned products automatically be added
-// back to inventory?".
+// Sellable-condition items restock available quantity. Damaged items go to
+// StockBalance.damagedQuantity (quarantine) — not sellable, written off later
+// via the inventory write-off flow. See docs/requirements-qa.md.
 model SaleReturn {
   id           String   @id @default(uuid()) @db.Uuid
   tenantId     String   @map("tenant_id") @db.Uuid
@@ -826,17 +894,13 @@ model SaleReturn {
   warehouseId  String   @map("warehouse_id") @db.Uuid
   refundAmount Decimal  @map("refund_amount") @db.Decimal(14, 2)
   reason       String?
+  approvedBy   String?  @map("approved_by") @db.Uuid
   createdAt    DateTime @default(now()) @map("created_at")
 
   sale  Sale             @relation(fields: [saleId], references: [id])
   items SaleReturnItem[]
 
   @@map("sale_returns")
-}
-
-enum SaleReturnCondition {
-  SELLABLE
-  DAMAGED
 }
 
 model SaleReturnItem {
@@ -850,4 +914,38 @@ model SaleReturnItem {
   saleReturn SaleReturn @relation(fields: [saleReturnId], references: [id])
 
   @@map("sale_return_items")
+}
+
+model SaleExchange {
+  id                 String   @id @default(uuid()) @db.Uuid
+  tenantId           String   @map("tenant_id") @db.Uuid
+  saleId             String   @map("sale_id") @db.Uuid
+  warehouseId        String   @map("warehouse_id") @db.Uuid
+  refundAmount       Decimal  @map("refund_amount") @db.Decimal(14, 2)
+  replacementAmount  Decimal  @map("replacement_amount") @db.Decimal(14, 2)
+  netAmount          Decimal  @map("net_amount") @db.Decimal(14, 2)
+  reason             String?
+  approvedBy         String?  @map("approved_by") @db.Uuid
+  createdAt          DateTime @default(now()) @map("created_at")
+
+  sale  Sale               @relation(fields: [saleId], references: [id])
+  items SaleExchangeItem[]
+
+  @@map("sale_exchanges")
+}
+
+model SaleExchangeItem {
+  id          String                 @id @default(uuid()) @db.Uuid
+  exchangeId  String                 @map("exchange_id") @db.Uuid
+  direction   SaleExchangeDirection
+  productId   String                 @map("product_id") @db.Uuid
+  quantity    Decimal                @db.Decimal(14, 3)
+  unitPrice   Decimal                @map("unit_price") @db.Decimal(14, 2)
+  discount    Decimal                @default(0) @db.Decimal(14, 2)
+  tax         Decimal                @default(0) @db.Decimal(14, 2)
+  condition   SaleReturnCondition?
+
+  exchange SaleExchange @relation(fields: [exchangeId], references: [id])
+
+  @@map("sale_exchange_items")
 }

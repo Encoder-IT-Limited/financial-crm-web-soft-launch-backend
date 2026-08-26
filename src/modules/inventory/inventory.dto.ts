@@ -17,5 +17,6 @@ export type ProductDto = {
   trackBatch: boolean;
   status: string;
   onHand: number;
+  damagedOnHand: number;
   createdAt: string;
 };

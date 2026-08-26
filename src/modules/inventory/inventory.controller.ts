@@ -51,7 +51,19 @@ export async function createUnitHandler(req: Request, res: Response, next: NextF
 export async function listProductsHandler(req: Request, res: Response, next: NextFunction) {
   try {
     const { tenantPrisma } = ctx(req);
-    res.json(await inventoryService.listProducts(tenantPrisma));
+    const barcode = typeof req.query.barcode === "string" ? req.query.barcode : undefined;
+    res.json(await inventoryService.listProducts(tenantPrisma, barcode));
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function lookupProductByBarcodeHandler(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { tenantPrisma } = ctx(req);
+    const barcode = typeof req.query.barcode === "string" ? req.query.barcode.trim() : "";
+    if (!barcode) throw new AppError(400, "BARCODE_REQUIRED", "barcode query parameter is required");
+    res.json(await inventoryService.lookupProductByBarcode(tenantPrisma, barcode));
   } catch (err) {
     next(err);
   }
@@ -121,6 +133,16 @@ export async function adjustStockHandler(req: Request, res: Response, next: Next
     const { tenantPrisma, tenantId, userId } = ctx(req);
     const input = v.adjustStockSchema.parse(req.body);
     res.status(201).json(await inventoryService.adjustStock(tenantPrisma, tenantId, input, userId));
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function writeOffDamagedHandler(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { tenantPrisma, tenantId, userId } = ctx(req);
+    const input = v.writeOffDamagedSchema.parse(req.body);
+    res.status(201).json(await inventoryService.writeOffDamaged(tenantPrisma, tenantId, input, userId));
   } catch (err) {
     next(err);
   }

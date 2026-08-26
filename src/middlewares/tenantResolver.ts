@@ -42,16 +42,44 @@ async function resolveTenantBySubdomain(subdomain: string): Promise<RequestTenan
   return resolved;
 }
 
+function isIpHost(host: string): boolean {
+  return /^\d{1,3}(\.\d{1,3}){3}$/.test(host);
+}
+
+/** Soft-launch / SPA: allow explicit tenant header on root API host (IP or ROOT_DOMAIN). */
+function allowTenantHeader(host: string): boolean {
+  return env.NODE_ENV !== "production" || host === env.ROOT_DOMAIN || isIpHost(host);
+}
+
 function subdomainFromRequest(req: Request): string | null {
   const header = req.headers["x-tenant-subdomain"];
-  if (typeof header === "string" && header.length > 0 && env.NODE_ENV !== "production") {
+  if (typeof header === "string" && header.length > 0 && allowTenantHeader(req.hostname)) {
     return header;
   }
 
+  const softLaunchDefault = () =>
+    process.env.NEXT_PUBLIC_DEV_TENANT_SUBDOMAIN || process.env.DEV_TENANT_SUBDOMAIN || "demo";
+
   try {
-    return parseSubdomain(req.hostname, env.ROOT_DOMAIN);
+    const fromHost = parseSubdomain(req.hostname, env.ROOT_DOMAIN);
+    // Bare root/IP API (no subdomain in host) — soft-launch SPA still needs a tenant.
+    if (fromHost === null && allowTenantHeader(req.hostname)) {
+      return softLaunchDefault();
+    }
+    return fromHost;
   } catch (err) {
-    if (env.NODE_ENV !== "production" && req.hostname === "localhost") return null;
+    if (allowTenantHeader(req.hostname)) {
+      const host = req.hostname;
+      const isDevHost =
+        host === "localhost" ||
+        host === "127.0.0.1" ||
+        host === "0.0.0.0" ||
+        isIpHost(host) ||
+        host === env.ROOT_DOMAIN;
+      if (isDevHost) {
+        return softLaunchDefault();
+      }
+    }
     throw err;
   }
 }

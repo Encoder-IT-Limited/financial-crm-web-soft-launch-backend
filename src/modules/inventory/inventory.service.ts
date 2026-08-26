@@ -35,10 +35,11 @@ function toProductDto(
     createdAt: Date;
     category?: { name: string } | null;
     unit?: { name: string; symbol: string } | null;
-    stockBalances?: { quantity: unknown }[];
+    stockBalances?: { quantity: unknown; damagedQuantity?: unknown }[];
   },
 ): ProductDto {
   const onHand = (row.stockBalances ?? []).reduce((sum, b) => sum + Number(b.quantity), 0);
+  const damagedOnHand = (row.stockBalances ?? []).reduce((sum, b) => sum + Number(b.damagedQuantity ?? 0), 0);
   return {
     id: row.id,
     sku: row.sku,
@@ -58,6 +59,7 @@ function toProductDto(
     trackBatch: row.trackBatch,
     status: row.status,
     onHand,
+    damagedOnHand,
     createdAt: row.createdAt.toISOString(),
   };
 }
@@ -82,12 +84,26 @@ export function createUnit(tenantPrisma: PrismaClient, tenantId: string, input: 
   return tenantPrisma.unit.create({ data: { tenantId, ...input } });
 }
 
-export async function listProducts(tenantPrisma: PrismaClient) {
+export async function listProducts(tenantPrisma: PrismaClient, barcode?: string) {
   const rows = await tenantPrisma.product.findMany({
-    include: { ...productInclude, stockBalances: { select: { quantity: true } } },
+    where: barcode ? { barcode } : undefined,
+    include: { ...productInclude, stockBalances: { select: { quantity: true, damagedQuantity: true } } },
     orderBy: { createdAt: "desc" },
   });
   return rows.map(toProductDto);
+}
+
+export async function lookupProductByBarcode(tenantPrisma: PrismaClient, barcode: string) {
+  const rows = await tenantPrisma.product.findMany({
+    where: { barcode },
+    include: { ...productInclude, stockBalances: { select: { quantity: true, damagedQuantity: true } } },
+    take: 2,
+  });
+  if (rows.length === 0) throw new AppError(404, "PRODUCT_NOT_FOUND", `No product with barcode ${barcode}`);
+  if (rows.length > 1) {
+    throw new AppError(409, "AMBIGUOUS_BARCODE", `Multiple products share barcode ${barcode}`);
+  }
+  return toProductDto(rows[0]);
 }
 
 export async function createProduct(
@@ -112,7 +128,7 @@ export async function createProduct(
       trackBatch: input.trackBatch,
       status: input.status,
     },
-    include: { ...productInclude, stockBalances: { select: { quantity: true } } },
+    include: { ...productInclude, stockBalances: { select: { quantity: true, damagedQuantity: true } } },
   });
   return toProductDto(row);
 }
@@ -142,7 +158,7 @@ export async function updateProduct(
       ...(input.trackBatch !== undefined ? { trackBatch: input.trackBatch } : {}),
       ...(input.status !== undefined ? { status: input.status } : {}),
     },
-    include: { ...productInclude, stockBalances: { select: { quantity: true } } },
+    include: { ...productInclude, stockBalances: { select: { quantity: true, damagedQuantity: true } } },
   });
   return toProductDto(row);
 }
@@ -403,6 +419,97 @@ export async function issueStock(
   return tenantPrisma.$transaction((tx) => issueStockCore(tx, tenantId, input, userId));
 }
 
+export async function quarantineStockCore(
+  db: Db,
+  tenantId: string,
+  input: { productId: string; warehouseId: string; quantity: number; referenceType?: string; referenceId?: string },
+  userId: string,
+) {
+  const existing = await db.stockBalance.findUnique({
+    where: { warehouseId_productId: { warehouseId: input.warehouseId, productId: input.productId } },
+  });
+  const sellable = existing ? Number(existing.quantity) : 0;
+  const damaged = existing ? Number(existing.damagedQuantity) : 0;
+  const averageCost = existing ? Number(existing.averageCost) : 0;
+
+  await upsertStockBalance(db, tenantId, input.warehouseId, input.productId, sellable, averageCost);
+  await db.stockBalance.update({
+    where: { warehouseId_productId: { warehouseId: input.warehouseId, productId: input.productId } },
+    data: { damagedQuantity: damaged + input.quantity },
+  });
+
+  const movement = await db.stockMovement.create({
+    data: {
+      tenantId,
+      warehouseId: input.warehouseId,
+      productId: input.productId,
+      movementType: "QUARANTINE",
+      quantity: input.quantity,
+      unitCost: averageCost,
+      referenceType: input.referenceType,
+      referenceId: input.referenceId,
+      createdBy: userId,
+    },
+  });
+
+  await emitAccountingEvent(db, tenantId, {
+    eventType: "STOCK_QUARANTINED",
+    referenceType: input.referenceType ?? "STOCK_MOVEMENT",
+    referenceId: movement.id,
+    amount: input.quantity * averageCost,
+    payload: { productId: input.productId, warehouseId: input.warehouseId, quantity: input.quantity },
+  });
+
+  return movement;
+}
+
+export async function writeOffDamaged(
+  tenantPrisma: PrismaClient,
+  tenantId: string,
+  input: { productId: string; warehouseId: string; quantity: number; referenceType?: string; referenceId?: string },
+  userId: string,
+) {
+  return tenantPrisma.$transaction(async (tx) => {
+    const balance = await tx.stockBalance.findUnique({
+      where: { warehouseId_productId: { warehouseId: input.warehouseId, productId: input.productId } },
+    });
+    const damaged = balance ? Number(balance.damagedQuantity) : 0;
+    if (input.quantity > damaged) {
+      throw new AppError(
+        409,
+        "INSUFFICIENT_DAMAGED_STOCK",
+        `Only ${damaged} damaged units available to write off, requested ${input.quantity}`,
+      );
+    }
+    const unitCost = balance ? Number(balance.averageCost) : 0;
+    await tx.stockBalance.update({
+      where: { warehouseId_productId: { warehouseId: input.warehouseId, productId: input.productId } },
+      data: { damagedQuantity: damaged - input.quantity },
+    });
+    const movement = await tx.stockMovement.create({
+      data: {
+        tenantId,
+        warehouseId: input.warehouseId,
+        productId: input.productId,
+        movementType: "DAMAGE",
+        quantity: -input.quantity,
+        unitCost,
+        referenceType: input.referenceType ?? "DAMAGED_WRITE_OFF",
+        referenceId: input.referenceId,
+        createdBy: userId,
+      },
+    });
+    await emitAccountingEvent(tx, tenantId, {
+      eventType: "STOCK_WRITTEN_OFF",
+      referenceType: input.referenceType ?? "STOCK_MOVEMENT",
+      referenceId: movement.id,
+      amount: input.quantity * unitCost,
+      payload: { productId: input.productId, warehouseId: input.warehouseId, quantity: input.quantity },
+    });
+    return movement;
+  });
+}
+
 interface AdjustStockInput {
   productId: string;
   warehouseId: string;
@@ -570,7 +677,7 @@ export async function receiveTransfer(tenantPrisma: PrismaClient, tenantId: stri
 export async function getProduct(tenantPrisma: PrismaClient, id: string) {
   const row = await tenantPrisma.product.findUnique({
     where: { id },
-    include: { ...productInclude, stockBalances: { select: { quantity: true } } },
+    include: { ...productInclude, stockBalances: { select: { quantity: true, damagedQuantity: true } } },
   });
   return row ? toProductDto(row) : null;
 }

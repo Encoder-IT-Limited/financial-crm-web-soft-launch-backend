@@ -1,10 +1,12 @@
-import type { PrismaClient, Invoice } from "../../generated/tenant-client/client";
+import type { PrismaClient, Prisma, Invoice } from "../../generated/tenant-client/client";
 import { AppError } from "../../utils/errors";
 import { emitAccountingEvent } from "../accounting/accounting.service";
 import { receiveStockCore, issueStockCore } from "../inventory/inventory.service";
 import { computeInvoiceTotals, isOverdue, lineTotal } from "./invoicing.totals";
 
 export { isOverdue, computeInvoiceTotals };
+
+type Db = PrismaClient | Prisma.TransactionClient;
 
 export function toInvoiceResponse(
   invoice: Invoice & { items?: unknown; payments?: unknown[]; overdue?: boolean },
@@ -21,11 +23,11 @@ export function toInvoiceResponse(
   };
 }
 
-async function generateInvoiceNumber(tenantPrisma: PrismaClient): Promise<string> {
+async function generateInvoiceNumber(db: Db): Promise<string> {
   // Simple v1 scheme: count-based. Not safe under high concurrent write
   // volume (race between count and create) — fine for the current scale,
   // revisit with a dedicated sequence table if that ever becomes real.
-  const count = await tenantPrisma.invoice.count();
+  const count = await db.invoice.count();
   return `INV-${String(count + 1).padStart(6, "0")}`;
 }
 
@@ -36,13 +38,11 @@ interface CreateInvoiceInput {
   source?: string;
 }
 
-// Draft invoices never touch inventory — per docs/requirements-qa.md, stock
-// is only deducted at an explicit fulfillment event (fulfillInvoice below).
-export async function createInvoice(tenantPrisma: PrismaClient, tenantId: string, input: CreateInvoiceInput) {
+export async function createInvoiceCore(db: Db, tenantId: string, input: CreateInvoiceInput) {
   const totals = computeInvoiceTotals(input.items);
-  const invoiceNumber = await generateInvoiceNumber(tenantPrisma);
+  const invoiceNumber = await generateInvoiceNumber(db);
 
-  return tenantPrisma.invoice.create({
+  return db.invoice.create({
     data: {
       tenantId,
       customerId: input.customerId,
@@ -69,6 +69,12 @@ export async function createInvoice(tenantPrisma: PrismaClient, tenantId: string
     },
     include: { items: true },
   });
+}
+
+// Draft invoices never touch inventory — per docs/requirements-qa.md, stock
+// is only deducted at an explicit fulfillment event (fulfillInvoice below).
+export async function createInvoice(tenantPrisma: PrismaClient, tenantId: string, input: CreateInvoiceInput) {
+  return createInvoiceCore(tenantPrisma, tenantId, input);
 }
 
 export async function updateInvoice(
@@ -239,8 +245,8 @@ export async function recordPayment(
 // The one explicit "fulfillment" event that deducts inventory for a B2B
 // invoice — per docs/requirements-qa.md, invoice posting itself never does.
 // Supports partial shipments; negative stock is allowed and flagged.
-export async function fulfillInvoice(
-  tenantPrisma: PrismaClient,
+export async function fulfillInvoiceCore(
+  tx: Db,
   tenantId: string,
   invoiceId: string,
   input: {
@@ -254,7 +260,6 @@ export async function fulfillInvoice(
   },
   userId: string,
 ) {
-  return tenantPrisma.$transaction(async (tx) => {
     const invoice = await tx.invoice.findUnique({
       where: { id: invoiceId },
       include: {
@@ -402,7 +407,24 @@ export async function fulfillInvoice(
     });
 
     return { invoice: updatedInvoice, fulfillment };
-  });
+}
+
+export async function fulfillInvoice(
+  tenantPrisma: PrismaClient,
+  tenantId: string,
+  invoiceId: string,
+  input: {
+    warehouseId: string;
+    lines?: { invoiceItemId: string; quantity: number }[];
+    generateDeliveryNote?: boolean;
+    notes?: string;
+    trigger?: "MANUAL" | "DELIVERY_NOTE" | "POS_AUTO";
+    skipStockMovement?: boolean;
+    forcePendingProductIds?: string[];
+  },
+  userId: string,
+) {
+  return tenantPrisma.$transaction((tx) => fulfillInvoiceCore(tx, tenantId, invoiceId, input, userId));
 }
 
 export function listFulfillments(tenantPrisma: PrismaClient, invoiceId?: string) {
@@ -444,15 +466,15 @@ export async function reconcileFulfillmentLine(tenantPrisma: PrismaClient, lineI
  * fulfillment rows are written — no second inventory issue.
  */
 export async function autoFulfillPos(
-  tenantPrisma: PrismaClient,
+  db: Db,
   tenantId: string,
   invoiceId: string,
   warehouseId: string,
   userId: string,
   opts?: { skipStockMovement?: boolean; pendingProductIds?: string[] },
 ) {
-  return fulfillInvoice(
-    tenantPrisma,
+  return fulfillInvoiceCore(
+    db,
     tenantId,
     invoiceId,
     {
