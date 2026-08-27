@@ -15,19 +15,25 @@ export { isOverdue, computeInvoiceTotals };
 type Db = PrismaClient | Prisma.TransactionClient;
 
 export function toInvoiceResponse(
-  invoice: Invoice & { items?: unknown; payments?: unknown[]; overdue?: boolean; currency?: string | null },
+  invoice: Invoice & {
+    items?: unknown;
+    payments?: Array<{ currency?: string | null } & Record<string, unknown>>;
+    overdue?: boolean;
+    currency?: string | null;
+  },
   rootDomain: string,
   tenantCurrency?: string | null,
 ) {
+  const currency = resolveCurrency(invoice.currency, tenantCurrency);
   return {
     ...invoice,
-    currency: resolveCurrency(invoice.currency, tenantCurrency),
+    currency,
     overdue: isOverdue(invoice),
-    // Default QR/payment-link target per docs/requirements-qa.md — no real
-    // payment gateway wired up yet, so this points at a page that doesn't
-    // exist. Needs a provider decision before it's a real payment flow.
     paymentLink: `https://${rootDomain}/pay/${invoice.id}`,
-    payments: invoice.payments ?? [],
+    payments: (invoice.payments ?? []).map((payment) => ({
+      ...payment,
+      currency: resolveCurrency(payment.currency, currency, tenantCurrency),
+    })),
   };
 }
 
@@ -297,6 +303,7 @@ export async function recordPayment(
         referenceId: invoiceId,
         paymentMethod: input.paymentMethod,
         amount: input.amount,
+        currency: resolveCurrency(invoice.currency),
         transactionReference: input.transactionReference,
         createdBy: userId,
       },
@@ -1026,6 +1033,7 @@ export async function generateRecurringTemplate(
       data: {
         tenantId,
         amount: invoice.total,
+        currency: resolveCurrency(invoice.currency),
         paymentMethod: "BANK",
         paymentDate: new Date(),
         referenceType: "INVOICE",

@@ -58,7 +58,31 @@ export const saleItemSchema = z.object({
 export const salePaymentSchema = z.object({
   paymentMethod: z.enum(["CASH", "CARD", "BANK", "MOBILE_PAYMENT", "CHEQUE", "OTHER"]),
   amount: z.number().positive(),
+  tenderedAmount: z.number().positive().optional(),
   transactionReference: z.string().optional(),
+}).refine((p) => p.tenderedAmount == null || p.tenderedAmount + 0.009 >= p.amount, {
+  message: "tenderedAmount must be at least the applied amount",
+  path: ["tenderedAmount"],
+});
+
+export const listSalesQuerySchema = z.object({
+  posSessionId: z.string().uuid().optional(),
+  terminalId: z.string().uuid().optional(),
+  customerId: z.string().uuid().optional(),
+  search: z.string().trim().max(80).optional(),
+  startDate: z.coerce.date().optional(),
+  endDate: z.coerce.date().optional(),
+});
+
+export const listSessionsQuerySchema = z.object({
+  status: z.enum(["OPEN", "CLOSED"]).optional(),
+  terminalId: z.string().uuid().optional(),
+  startDate: z.coerce.date().optional(),
+  endDate: z.coerce.date().optional(),
+});
+
+export const listTerminalsQuerySchema = z.object({
+  status: z.enum(["ACTIVE", "INACTIVE"]).optional(),
 });
 
 export const createSaleSchema = z

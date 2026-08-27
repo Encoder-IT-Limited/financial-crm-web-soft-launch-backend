@@ -12,6 +12,7 @@ posRouter.get("/terminals", requirePermission("pos.view"), c.listTerminalsHandle
 posRouter.post("/terminals", requireTenantWritable, requirePermission("pos.manage"), c.createTerminalHandler);
 posRouter.get("/terminals/:id/open-session", requirePermission("pos.view"), c.getOpenSessionForTerminalHandler);
 posRouter.patch("/terminals/:id", requireTenantWritable, requirePermission("pos.manage"), c.updateTerminalHandler);
+posRouter.delete("/terminals/:id", requireTenantWritable, requirePermission("pos.manage"), c.deleteTerminalHandler);
 posRouter.post(
   "/terminals/:id/status",
   requireTenantWritable,

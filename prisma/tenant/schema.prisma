@@ -330,6 +330,7 @@ model Payment {
   paymentMethod        PaymentMethod @map("payment_method")
   amount               Decimal       @db.Decimal(14, 2)
   currency             String?
+  tenderedAmount       Decimal?      @map("tendered_amount") @db.Decimal(14, 2)
   transactionReference String?       @map("transaction_reference")
   paymentDate          DateTime      @default(now()) @map("payment_date")
   status               String        @default("COMPLETED")

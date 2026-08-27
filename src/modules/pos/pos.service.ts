@@ -1,19 +1,24 @@
 import type { PrismaClient, Prisma } from "../../generated/tenant-client/client";
 import { AppError } from "../../utils/errors";
+import { resolveCurrency } from "../../utils/currency";
 import { emitAccountingEvent } from "../accounting/accounting.service";
 import { issueStockCore, receiveStockCore, quarantineStockCore, lookupProductByBarcode } from "../inventory/inventory.service";
 import { autoFulfillPos, createInvoiceCore } from "../invoicing/invoicing.service";
 import { roundMoney } from "../invoicing/invoicing.totals";
 import { hashManagerPin, assertManagerApproval, MANAGER_PIN_ROLES } from "./pos.pin";
 import { discountFromRule, taxFromRate, lineTotal } from "./pos.pricing";
+import { saleListWhere, sessionListWhere, type SaleListFilters, type SessionListFilters } from "./pos.salesWhere";
 import bcrypt from "bcrypt";
 
 type Db = PrismaClient | Prisma.TransactionClient;
 
 type Actor = { id: string; role: string };
 
-export async function listTerminals(tenantPrisma: PrismaClient) {
-  const rows = await tenantPrisma.posTerminal.findMany({ orderBy: { name: "asc" } });
+export async function listTerminals(tenantPrisma: PrismaClient, status?: "ACTIVE" | "INACTIVE") {
+  const rows = await tenantPrisma.posTerminal.findMany({
+    where: status ? { status } : undefined,
+    orderBy: { name: "asc" },
+  });
   return rows.map(publicTerminal);
 }
 
@@ -65,9 +70,17 @@ export async function updateTerminal(
   return publicTerminal(row);
 }
 
-export async function listSessions(tenantPrisma: PrismaClient, status?: "OPEN" | "CLOSED") {
+export async function deactivateTerminal(tenantPrisma: PrismaClient, id: string) {
+  const open = await tenantPrisma.posSession.findFirst({ where: { terminalId: id, status: "OPEN" } });
+  if (open) {
+    throw new AppError(409, "TERMINAL_HAS_OPEN_SESSION", "Close the open shift before deactivating this terminal");
+  }
+  return updateTerminal(tenantPrisma, id, { status: "INACTIVE" });
+}
+
+export async function listSessions(tenantPrisma: PrismaClient, query: SessionListFilters = {}) {
   const rows = await tenantPrisma.posSession.findMany({
-    where: status ? { status } : undefined,
+    where: sessionListWhere(query),
     orderBy: { openedAt: "desc" },
     include: { terminal: true },
   });
@@ -205,6 +218,7 @@ interface SaleItemInput {
 interface SalePaymentInput {
   paymentMethod: "CASH" | "CARD" | "BANK" | "MOBILE_PAYMENT" | "CHEQUE" | "OTHER";
   amount: number;
+  tenderedAmount?: number;
   transactionReference?: string;
 }
 
@@ -266,6 +280,12 @@ export async function getOpenSessionForTerminal(tenantPrisma: PrismaClient, term
   });
   if (!session) throw new AppError(404, "NO_OPEN_SESSION", "No open session for this terminal");
   return { ...session, terminal: publicTerminal(session.terminal) };
+}
+
+async function currencyForSale(db: Db, invoiceId: string | null | undefined) {
+  if (!invoiceId) return resolveCurrency();
+  const invoice = await db.invoice.findUnique({ where: { id: invoiceId }, select: { currency: true } });
+  return resolveCurrency(invoice?.currency);
 }
 
 async function resolveLine(
@@ -339,6 +359,7 @@ async function createPosInvoiceAndFulfill(
   userId: string,
   pendingProductIds: string[],
   payments: SalePaymentInput[],
+  currency: string,
 ) {
   const customerId = sale.customerId ?? (await ensureWalkInCustomer(db, tenantId)).id;
   const products = await db.product.findMany({
@@ -350,6 +371,7 @@ async function createPosInvoiceAndFulfill(
     customerId,
     dueDate: new Date(),
     source: "POS",
+    currency,
     items: sale.items.map((item) => ({
       productId: item.productId,
       description: nameById.get(item.productId) ?? "POS item",
@@ -375,6 +397,8 @@ async function createPosInvoiceAndFulfill(
       data: {
         tenantId,
         amount: payment.amount,
+        tenderedAmount: payment.tenderedAmount ?? payment.amount,
+        currency,
         paymentMethod: payment.paymentMethod,
         paymentDate: new Date(),
         referenceType: "INVOICE",
@@ -394,7 +418,13 @@ async function createPosInvoiceAndFulfill(
   return invoice;
 }
 
-export async function createSale(tenantPrisma: PrismaClient, tenantId: string, input: CreateSaleInput, actor: Actor) {
+export async function createSale(
+  tenantPrisma: PrismaClient,
+  tenantId: string,
+  input: CreateSaleInput,
+  actor: Actor,
+  currency = "AED",
+) {
   if (input.isOfflineSync && input.deviceId && input.offlineTransactionKey) {
     const existing = await tenantPrisma.sale.findUnique({
       where: {
@@ -507,6 +537,8 @@ export async function createSale(tenantPrisma: PrismaClient, tenantId: string, i
           referenceId: saleRow.id,
           paymentMethod: payment.paymentMethod,
           amount: payment.amount,
+          tenderedAmount: payment.tenderedAmount ?? payment.amount,
+          currency,
           transactionReference: payment.transactionReference,
           createdBy: actor.id,
         },
@@ -530,6 +562,7 @@ export async function createSale(tenantPrisma: PrismaClient, tenantId: string, i
       actor.id,
       pendingProductIds,
       input.payments,
+      currency,
     );
 
     return tx.sale.findUniqueOrThrow({
@@ -539,12 +572,33 @@ export async function createSale(tenantPrisma: PrismaClient, tenantId: string, i
   });
 }
 
-export function listSales(tenantPrisma: PrismaClient, posSessionId?: string) {
-  return tenantPrisma.sale.findMany({
-    where: posSessionId ? { posSessionId } : undefined,
+export async function listSales(tenantPrisma: PrismaClient, query: SaleListFilters = {}) {
+  let matchingSessionIds: string[] | undefined;
+  if (query.terminalId) {
+    const sessions = await tenantPrisma.posSession.findMany({
+      where: { terminalId: query.terminalId },
+      select: { id: true },
+    });
+    matchingSessionIds = sessions.map((s) => s.id);
+    if (matchingSessionIds.length === 0) return [];
+  }
+  const rows = await tenantPrisma.sale.findMany({
+    where: saleListWhere({ ...query, matchingSessionIds }),
     orderBy: { createdAt: "desc" },
     include: { items: true, returns: { include: { items: true } } },
   });
+  const sessionIds = [...new Set(rows.map((r) => r.posSessionId).filter((id): id is string => Boolean(id)))];
+  const sessions = sessionIds.length
+    ? await tenantPrisma.posSession.findMany({
+        where: { id: { in: sessionIds } },
+        select: { id: true, terminalId: true },
+      })
+    : [];
+  const terminalBySession = new Map(sessions.map((s) => [s.id, s.terminalId]));
+  return rows.map((row) => ({
+    ...row,
+    terminalId: row.posSessionId ? (terminalBySession.get(row.posSessionId) ?? null) : null,
+  }));
 }
 
 export async function getSale(tenantPrisma: PrismaClient, id: string) {
@@ -744,6 +798,7 @@ export async function refundSale(
 
     await restockReturnItems(tx, tenantId, sale.warehouseId, items, saleReturn.id, actor.id, "SALE_RETURN");
 
+    const currency = await currencyForSale(tx, sale.invoiceId);
     await tx.payment.create({
       data: {
         tenantId,
@@ -751,6 +806,7 @@ export async function refundSale(
         referenceId: saleId,
         paymentMethod: "CASH",
         amount: -refundAmount,
+        currency,
         createdBy: actor.id,
       },
     });
@@ -899,6 +955,7 @@ export async function exchangeSale(
     }
 
     if (netAmount > 0.01) {
+      const currency = await currencyForSale(tx, sale.invoiceId);
       for (const payment of input.payments) {
         await tx.payment.create({
           data: {
@@ -907,6 +964,8 @@ export async function exchangeSale(
             referenceId: saleId,
             paymentMethod: payment.paymentMethod,
             amount: payment.amount,
+            tenderedAmount: payment.tenderedAmount ?? payment.amount,
+            currency,
             transactionReference: payment.transactionReference,
             createdBy: actor.id,
           },
@@ -920,6 +979,7 @@ export async function exchangeSale(
           referenceId: saleId,
           paymentMethod: "CASH",
           amount: netAmount,
+          currency: await currencyForSale(tx, sale.invoiceId),
           createdBy: actor.id,
         },
       });

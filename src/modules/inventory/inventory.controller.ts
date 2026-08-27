@@ -240,7 +240,10 @@ export async function getWarehouseHandler(req: Request, res: Response, next: Nex
 export async function listStockHandler(req: Request, res: Response, next: NextFunction) {
   try {
     const { tenantPrisma } = ctx(req);
-    res.json(await inventoryService.listStockBalances(tenantPrisma));
+    const query = v.listStockQuerySchema.parse(
+      Object.fromEntries(Object.entries(req.query).filter(([, value]) => value !== "" && value !== undefined)),
+    );
+    res.json(await inventoryService.listStockBalances(tenantPrisma, query.warehouseId));
   } catch (err) {
     next(err);
   }

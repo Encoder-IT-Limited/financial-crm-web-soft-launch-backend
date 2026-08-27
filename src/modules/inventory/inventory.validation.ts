@@ -29,6 +29,10 @@ export const createProductSchema = z.object({
 
 export const updateProductSchema = createProductSchema.partial();
 
+export const listStockQuerySchema = z.object({
+  warehouseId: z.string().uuid().optional(),
+});
+
 export const listProductsQuerySchema = z.object({
   barcode: z.string().optional(),
   search: z.string().optional(),

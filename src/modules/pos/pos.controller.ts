@@ -1,8 +1,13 @@
 import type { Request, Response, NextFunction } from "express";
 import { AppError } from "../../utils/errors";
 import { requireParam } from "../../utils/params";
+import { resolveCurrency } from "../../utils/currency";
 import * as v from "./pos.validation";
 import * as posService from "./pos.service";
+
+function omitEmptyQuery(query: Request["query"]) {
+  return Object.fromEntries(Object.entries(query).filter(([, value]) => value !== "" && value !== undefined));
+}
 
 function ctx(req: Request) {
   if (!req.tenant || !req.tenantPrisma) throw new AppError(400, "TENANT_REQUIRED", "Tenant subdomain required");
@@ -17,7 +22,8 @@ function ctx(req: Request) {
 export async function listTerminalsHandler(req: Request, res: Response, next: NextFunction) {
   try {
     const { tenantPrisma } = ctx(req);
-    res.json(await posService.listTerminals(tenantPrisma));
+    const query = v.listTerminalsQuerySchema.parse(omitEmptyQuery(req.query));
+    res.json(await posService.listTerminals(tenantPrisma, query.status));
   } catch (err) {
     next(err);
   }
@@ -38,6 +44,15 @@ export async function updateTerminalHandler(req: Request, res: Response, next: N
     const { tenantPrisma } = ctx(req);
     const input = v.updateTerminalSchema.parse(req.body);
     res.json(await posService.updateTerminal(tenantPrisma, requireParam(req, "id"), input));
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function deleteTerminalHandler(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { tenantPrisma } = ctx(req);
+    res.json(await posService.deactivateTerminal(tenantPrisma, requireParam(req, "id")));
   } catch (err) {
     next(err);
   }
@@ -67,9 +82,8 @@ export async function openSessionHandler(req: Request, res: Response, next: Next
 export async function listSessionsHandler(req: Request, res: Response, next: NextFunction) {
   try {
     const { tenantPrisma } = ctx(req);
-    const raw = typeof req.query.status === "string" ? req.query.status : undefined;
-    const status = raw === "OPEN" || raw === "CLOSED" ? raw : undefined;
-    res.json(await posService.listSessions(tenantPrisma, status));
+    const query = v.listSessionsQuerySchema.parse(omitEmptyQuery(req.query));
+    res.json(await posService.listSessions(tenantPrisma, query));
   } catch (err) {
     next(err);
   }
@@ -117,7 +131,8 @@ export async function createSaleHandler(req: Request, res: Response, next: NextF
   try {
     const { tenantPrisma, tenantId, actor } = ctx(req);
     const input = parsed.success ? parsed.data : v.createSaleSchema.parse(req.body);
-    res.status(201).json(await posService.createSale(tenantPrisma, tenantId, input, actor));
+    const currency = resolveCurrency(req.tenant?.currency);
+    res.status(201).json(await posService.createSale(tenantPrisma, tenantId, input, actor, currency));
   } catch (err) {
     if (parsed.success && parsed.data.isOfflineSync) {
       try {
@@ -134,8 +149,8 @@ export async function createSaleHandler(req: Request, res: Response, next: NextF
 export async function listSalesHandler(req: Request, res: Response, next: NextFunction) {
   try {
     const { tenantPrisma } = ctx(req);
-    const posSessionId = typeof req.query.posSessionId === "string" ? req.query.posSessionId : undefined;
-    res.json(await posService.listSales(tenantPrisma, posSessionId));
+    const query = v.listSalesQuerySchema.parse(omitEmptyQuery(req.query));
+    res.json(await posService.listSales(tenantPrisma, query));
   } catch (err) {
     next(err);
   }

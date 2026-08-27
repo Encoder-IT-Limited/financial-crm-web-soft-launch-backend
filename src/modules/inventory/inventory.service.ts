@@ -867,8 +867,11 @@ export async function getWarehouse(tenantPrisma: PrismaClient, id: string) {
   return toWarehouseDto(tenantPrisma, row);
 }
 
-export function listStockBalances(tenantPrisma: PrismaClient) {
-  return tenantPrisma.stockBalance.findMany({ orderBy: { productId: "asc" } });
+export function listStockBalances(tenantPrisma: PrismaClient, warehouseId?: string) {
+  return tenantPrisma.stockBalance.findMany({
+    where: warehouseId ? { warehouseId } : undefined,
+    orderBy: { productId: "asc" },
+  });
 }
 
 type TransferListQuery = z.infer<typeof listTransfersQuerySchema>;
