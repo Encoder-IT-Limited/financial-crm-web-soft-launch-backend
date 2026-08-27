@@ -2,7 +2,7 @@ import { Router } from "express";
 import { authenticatePlatform } from "../../middlewares/authenticate";
 import { asyncHandler } from "../../utils/asyncHandler";
 import { requireParam } from "../../utils/params";
-import { addSeatsSchema, provisionTenantSchema, updateTenantSchema } from "./tenants.validation";
+import { addSeatsSchema, provisionTenantSchema, removeSeatsSchema, updateTenantSchema } from "./tenants.validation";
 import * as tenants from "./tenants.service";
 
 export const adminTenantsRouter: Router = Router();
@@ -58,6 +58,21 @@ adminTenantsRouter.post(
   asyncHandler(async (req, res) => {
     const { count } = addSeatsSchema.parse(req.body);
     res.json(await tenants.addSeats(requireParam(req, "id"), count, req.user));
+  }),
+);
+
+adminTenantsRouter.post(
+  "/:id/seats/remove",
+  asyncHandler(async (req, res) => {
+    const { count } = removeSeatsSchema.parse(req.body);
+    res.json(await tenants.removeSeats(requireParam(req, "id"), count, req.user));
+  }),
+);
+
+adminTenantsRouter.post(
+  "/:id/cancel",
+  asyncHandler(async (req, res) => {
+    res.json(await tenants.cancelTenant(requireParam(req, "id"), req.user));
   }),
 );
 

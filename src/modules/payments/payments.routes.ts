@@ -16,6 +16,33 @@ adminPaymentsRouter.get(
   }),
 );
 
+adminPaymentsRouter.get(
+  "/:id/invoice",
+  asyncHandler(async (req, res) => {
+    const row = await payments.getPayment(requireParam(req, "id"));
+    const html = payments.paymentInvoiceHtml(payments.toPaymentDto(row));
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="${row.reference}.html"`);
+    res.send(html);
+  }),
+);
+
+adminPaymentsRouter.get(
+  "/:id",
+  asyncHandler(async (req, res) => {
+    const row = await payments.getPayment(requireParam(req, "id"));
+    res.json(payments.toPaymentDto(row));
+  }),
+);
+
+adminPaymentsRouter.post(
+  "/:id/refund",
+  asyncHandler(async (req, res) => {
+    const row = await payments.updatePaymentStatus(requireParam(req, "id"), "refunded", req.user);
+    res.json(payments.toPaymentDto(row));
+  }),
+);
+
 adminPaymentsRouter.patch(
   "/:id",
   asyncHandler(async (req, res) => {

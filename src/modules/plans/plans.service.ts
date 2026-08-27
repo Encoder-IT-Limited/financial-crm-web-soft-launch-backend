@@ -12,10 +12,14 @@ export function toPlanDto(plan: {
   baseSeats: number;
   additionalSeatPrice: unknown;
   trialDays: number;
+  minSeats?: number | null;
+  maxSeats?: number | null;
+  salesAssisted?: boolean;
   modules: string[];
   popular: boolean;
   status: string;
 }): PlanDto {
+  const minSeats = plan.minSeats ?? plan.baseSeats;
   return {
     id: plan.id,
     name: plan.name,
@@ -24,6 +28,9 @@ export function toPlanDto(plan: {
     baseSeats: plan.baseSeats,
     additionalSeatPrice: Number(plan.additionalSeatPrice),
     trialDays: plan.trialDays,
+    minSeats,
+    maxSeats: plan.maxSeats ?? null,
+    salesAssisted: Boolean(plan.salesAssisted),
     modules: plan.modules,
     popular: plan.popular,
     status: plan.status,
@@ -51,6 +58,9 @@ export async function createPlan(
     modules: string[];
     popular?: boolean;
     status?: string;
+    minSeats?: number;
+    maxSeats?: number | null;
+    salesAssisted?: boolean;
   },
   actor?: RequestUser,
 ) {
@@ -64,6 +74,9 @@ export async function createPlan(
     modules: input.modules,
     popular: input.popular ?? false,
     status: input.status ?? "ACTIVE",
+    minSeats: input.minSeats ?? input.baseSeats,
+    maxSeats: input.maxSeats ?? null,
+    salesAssisted: input.salesAssisted ?? false,
   });
   await writeAudit({
     actor,
@@ -88,6 +101,9 @@ export async function updatePlan(id: string, input: Parameters<typeof createPlan
     modules: input.modules,
     popular: input.popular ?? existing.popular,
     status: input.status ?? existing.status,
+    minSeats: input.minSeats ?? existing.minSeats ?? existing.baseSeats,
+    maxSeats: input.maxSeats === undefined ? existing.maxSeats : input.maxSeats,
+    salesAssisted: input.salesAssisted ?? existing.salesAssisted,
   });
   await writeAudit({
     actor,

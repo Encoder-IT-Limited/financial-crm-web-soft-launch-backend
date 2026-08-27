@@ -18,8 +18,9 @@ import { adminTenantsRouter } from "./modules/tenants/tenants.routes";
 import { adminPlansRouter } from "./modules/plans/plans.routes";
 import { adminPaymentsRouter } from "./modules/payments/payments.routes";
 import { adminAuditRouter } from "./modules/audit/audit.routes";
-import { adminSettingsRouter } from "./modules/settings/settings.routes";
+import { adminSettingsRouter, publicSettingsRouter } from "./modules/settings/settings.routes";
 import { adminDashboardRouter } from "./modules/dashboard/dashboard.routes";
+import { publicContactRouter } from "./modules/contact/contact.routes";
 
 import { customersRouter } from "./modules/customers/customers.routes";
 import { inventoryRouter } from "./modules/inventory/inventory.routes";
@@ -53,6 +54,8 @@ export function createApp() {
   v1.use("/auth", authRouter);
   v1.get("/me", authenticateAny, meHandler);
   v1.use("/plans", publicPlansRouter);
+  v1.use("/settings", publicSettingsRouter);
+  v1.use("/contact", publicContactRouter);
 
   v1.use("/admin/dashboard", adminDashboardRouter);
   v1.use("/admin/tenants", adminTenantsRouter);

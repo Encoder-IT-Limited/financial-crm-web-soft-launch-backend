@@ -51,6 +51,9 @@ model SubscriptionPlan {
   baseSeats           Int      @map("base_seats")
   additionalSeatPrice Decimal  @default(0) @map("additional_seat_price") @db.Decimal(10, 2)
   trialDays           Int      @default(14) @map("trial_days")
+  minSeats            Int?     @map("min_seats")
+  maxSeats            Int?     @map("max_seats")
+  salesAssisted       Boolean  @default(false) @map("sales_assisted")
   modules             String[]
   popular             Boolean  @default(false)
   status              String   @default("ACTIVE")
@@ -146,13 +149,47 @@ model PlatformAuditLog {
 }
 
 model PlatformSettings {
-  id                 String  @id @default("default")
-  platformName       String  @default("MRM") @map("platform_name")
-  primaryColor       String? @map("primary_color")
-  retentionDays      Int     @default(60) @map("retention_days")
-  seatLimitMessage   String  @default("You've reached your plan's seat limit. Upgrade your plan or purchase additional seats.") @map("seat_limit_message")
-  maintenanceMode    Boolean @default(false) @map("maintenance_mode")
-  maintenanceMessage String? @map("maintenance_message")
+  id                  String  @id @default("default")
+  platformName        String  @default("MRM") @map("platform_name")
+  primaryColor        String? @map("primary_color")
+  retentionDays       Int     @default(60) @map("retention_days")
+  seatLimitMessage    String  @default("You've reached your plan's seat limit. Upgrade your plan or purchase additional seats.") @map("seat_limit_message")
+  maintenanceMode     Boolean @default(false) @map("maintenance_mode")
+  maintenanceMessage  String? @map("maintenance_message")
+  tagline             String?
+  logoUrl             String? @map("logo_url")
+  contactEmail        String? @map("contact_email")
+  currency            String  @default("AED")
+  privacyBody         String? @map("privacy_body")
+  termsBody           String? @map("terms_body")
+  privacyLastUpdated  String? @map("privacy_last_updated")
+  termsLastUpdated    String? @map("terms_last_updated")
+  linkedin            String?
+  twitter             String?
+  instagram           String?
 
   @@map("platform_settings")
+}
+
+model ContactInquiry {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String
+  email     String
+  company   String?
+  message   String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("contact_inquiries")
+}
+
+model PasswordResetToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  email     String
+  otpHash   String    @map("otp_hash")
+  expiresAt DateTime  @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  @@index([email])
+  @@map("password_reset_tokens")
 }

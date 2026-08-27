@@ -24,5 +24,8 @@ describe("plans.service – toPlanDto", () => {
     expect(dto.priceYearly).toBe(4790);
     expect(dto.additionalSeatPrice).toBe(29);
     expect(dto.popular).toBe(true);
+    expect(dto.minSeats).toBe(10);
+    expect(dto.maxSeats).toBeNull();
+    expect(dto.salesAssisted).toBe(false);
   });
 });

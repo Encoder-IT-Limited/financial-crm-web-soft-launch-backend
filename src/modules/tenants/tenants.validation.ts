@@ -62,3 +62,7 @@ export const updateOwnTenantProfileSchema = z.object({
 export const addSeatsSchema = z.object({
   count: z.number().int().positive(),
 });
+
+export const removeSeatsSchema = z.object({
+  count: z.number().int().positive(),
+});

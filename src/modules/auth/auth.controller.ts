@@ -1,12 +1,13 @@
 import type { Request, Response, NextFunction } from "express";
 import { AppError } from "../../utils/errors";
-import { loginSchema, refreshSchema } from "./auth.validation";
+import { loginSchema, refreshSchema, forgotPasswordSchema, verifyOtpSchema, resetPasswordSchema } from "./auth.validation";
 import * as authService from "./auth.service";
 import { platformLogin, platformRotateRefresh } from "./platform-auth.service";
 import { setAuthCookies, clearAuthCookies, COOKIE } from "../../utils/cookies";
 import { buildMe } from "./me.service";
 import { provisionTenant, slugifySubdomain } from "../tenants/tenants.service";
 import { signupSchema } from "../tenants/tenants.validation";
+import * as passwordReset from "./password-reset.service";
 import { toPlanDto, listPlans } from "../plans/plans.service";
 import { getTenantPrismaClient } from "../../db/tenantClientCache";
 import { publicPrisma } from "../../db/publicPrisma";
@@ -156,10 +157,29 @@ export async function listPublicPlansHandler(_req: Request, res: Response, next:
   }
 }
 
-export async function forgotPasswordHandler(_req: Request, res: Response) {
-  res.json({ accepted: true });
+export async function forgotPasswordHandler(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { email } = forgotPasswordSchema.parse(req.body);
+    res.json(await passwordReset.requestPasswordReset(email));
+  } catch (err) {
+    next(err);
+  }
 }
 
-export async function resetPasswordHandler(_req: Request, res: Response, next: NextFunction) {
-  next(new AppError(501, "NOT_IMPLEMENTED", "Password reset email delivery is not wired in Phase 1"));
+export async function verifyOtpHandler(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { email, otp } = verifyOtpSchema.parse(req.body);
+    res.json(await passwordReset.verifyPasswordOtp(email, otp));
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function resetPasswordHandler(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { email, otp, password } = resetPasswordSchema.parse(req.body);
+    res.json(await passwordReset.resetPassword(email, otp, password, req.tenantPrisma));
+  } catch (err) {
+    next(err);
+  }
 }

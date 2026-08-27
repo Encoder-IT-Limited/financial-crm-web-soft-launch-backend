@@ -374,6 +374,51 @@ export async function addSeats(id: string, count: number, actor?: RequestUser) {
   return getTenant(id);
 }
 
+export async function removeSeats(id: string, count: number, actor?: RequestUser) {
+  if (count <= 0) throw new AppError(400, "INVALID_SEAT_COUNT", "Seat count must be positive");
+  const tenant = await publicPrisma.tenant.findUnique({ where: { id } });
+  if (!tenant) throw new AppError(404, "TENANT_NOT_FOUND", "Tenant not found");
+  if (count > tenant.extraSeats) {
+    throw new AppError(409, "SEAT_COUNT_TOO_LOW", `This tenant only has ${tenant.extraSeats} extra seats to remove`);
+  }
+  const extraSeats = tenant.extraSeats - count;
+  await publicPrisma.tenant.update({ where: { id }, data: { extraSeats } });
+  await writeAudit({
+    actor,
+    tenantId: tenant.id,
+    tenantName: tenant.name,
+    module: "Tenants",
+    entity: "Tenant",
+    entityLabel: tenant.name,
+    action: "update",
+    oldValues: { extraSeatsPurchased: tenant.extraSeats },
+    newValues: { extraSeatsPurchased: extraSeats },
+  });
+  return getTenant(id);
+}
+
+export async function cancelTenant(id: string, actor?: RequestUser) {
+  const tenant = await publicPrisma.tenant.findUnique({ where: { id } });
+  if (!tenant) throw new AppError(404, "TENANT_NOT_FOUND", "Tenant not found");
+  await publicPrisma.tenant.update({
+    where: { id },
+    data: { status: "SUSPENDED", lifecycle: "cancelled", pendingDeletionAt: null },
+  });
+  invalidateTenantCache(tenant.subdomain);
+  await writeAudit({
+    actor,
+    tenantId: tenant.id,
+    tenantName: tenant.name,
+    module: "Tenants",
+    entity: "Tenant",
+    entityLabel: tenant.name,
+    action: "update",
+    oldValues: { status: tenant.lifecycle },
+    newValues: { status: "cancelled" },
+  });
+  return getTenant(id);
+}
+
 export async function markPendingDeletion(id: string, actor?: RequestUser) {
   const settings = await publicPrisma.platformSettings.findUnique({ where: { id: "default" } });
   const days = settings?.retentionDays ?? 60;

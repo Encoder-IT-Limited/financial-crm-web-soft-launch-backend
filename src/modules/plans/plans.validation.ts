@@ -11,4 +11,7 @@ export const planBodySchema = z.object({
   modules: z.array(z.enum(MODULE_KEYS)).min(1),
   popular: z.boolean().optional(),
   status: z.enum(["ACTIVE", "INACTIVE"]).optional(),
+  minSeats: z.number().int().positive().optional(),
+  maxSeats: z.number().int().positive().nullable().optional(),
+  salesAssisted: z.boolean().optional(),
 });

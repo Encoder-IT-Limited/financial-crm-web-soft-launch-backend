@@ -6,6 +6,9 @@ export type PlanDto = {
   baseSeats: number;
   additionalSeatPrice: number;
   trialDays: number;
+  minSeats: number;
+  maxSeats: number | null;
+  salesAssisted: boolean;
   modules: string[];
   popular: boolean;
   status: string;

@@ -21,6 +21,9 @@ export function createPlan(data: {
   modules: string[];
   popular: boolean;
   status: string;
+  minSeats?: number | null;
+  maxSeats?: number | null;
+  salesAssisted?: boolean;
 }) {
   return publicPrisma.subscriptionPlan.create({ data });
 }
