@@ -72,4 +72,41 @@ describe("invoiceListWhere", () => {
       AND: [{ customerId: "11111111-1111-1111-1111-111111111111" }, { status: "PAID" }],
     });
   });
+
+  it("filters overdue=true to SENT/PARTIALLY_PAID past due with a balance", () => {
+    expect(invoiceListWhere({ overdue: true, now })).toEqual({
+      status: { in: ["SENT", "PARTIALLY_PAID"] },
+      dueDate: { lt: startOfToday },
+      balanceDue: { gt: 0 },
+    });
+  });
+
+  it("filters overdue=false as NOT overdue", () => {
+    expect(invoiceListWhere({ overdue: false, now })).toEqual({
+      NOT: {
+        status: { in: ["SENT", "PARTIALLY_PAID"] },
+        dueDate: { lt: startOfToday },
+        balanceDue: { gt: 0 },
+      },
+    });
+  });
+
+  it("ANDs overdue=true with customerId", () => {
+    expect(
+      invoiceListWhere({
+        overdue: true,
+        customerId: "11111111-1111-1111-1111-111111111111",
+        now,
+      }),
+    ).toEqual({
+      AND: [
+        { customerId: "11111111-1111-1111-1111-111111111111" },
+        {
+          status: { in: ["SENT", "PARTIALLY_PAID"] },
+          dueDate: { lt: startOfToday },
+          balanceDue: { gt: 0 },
+        },
+      ],
+    });
+  });
 });

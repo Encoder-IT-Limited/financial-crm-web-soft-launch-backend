@@ -601,14 +601,14 @@ export async function listSales(tenantPrisma: PrismaClient, query: SaleListFilte
   }));
 }
 
-export async function getSale(tenantPrisma: PrismaClient, id: string) {
+export async function getSale(tenantPrisma: PrismaClient, id: string, tenantCurrency?: string | null) {
   const sale = await tenantPrisma.sale.findUnique({
     where: { id },
     include: {
       items: true,
       returns: { include: { items: true } },
       exchanges: { include: { items: true } },
-      invoice: { select: { id: true, invoiceNumber: true, status: true } },
+      invoice: { select: { id: true, invoiceNumber: true, status: true, currency: true } },
     },
   });
   if (!sale) throw new AppError(404, "SALE_NOT_FOUND", "Sale not found");
@@ -616,11 +616,17 @@ export async function getSale(tenantPrisma: PrismaClient, id: string) {
     where: { referenceType: "SALE", referenceId: id },
     orderBy: { paymentDate: "asc" },
   });
-  return { ...sale, payments };
+  return {
+    ...sale,
+    payments: payments.map((payment) => ({
+      ...payment,
+      currency: resolveCurrency(payment.currency, sale.invoice?.currency, tenantCurrency),
+    })),
+  };
 }
 
-export async function getReceipt(tenantPrisma: PrismaClient, saleId: string) {
-  const sale = await getSale(tenantPrisma, saleId);
+export async function getReceipt(tenantPrisma: PrismaClient, saleId: string, tenantCurrency?: string | null) {
+  const sale = await getSale(tenantPrisma, saleId, tenantCurrency);
   const session = sale.posSessionId
     ? await tenantPrisma.posSession.findUnique({
         where: { id: sale.posSessionId },

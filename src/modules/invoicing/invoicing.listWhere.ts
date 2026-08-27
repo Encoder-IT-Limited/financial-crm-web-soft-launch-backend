@@ -5,6 +5,7 @@ export type InvoiceListFilters = {
   status?: string;
   customerId?: string;
   matchingCustomerIds?: string[];
+  overdue?: boolean;
   now?: Date;
 };
 
@@ -78,6 +79,12 @@ export function invoiceListWhere(query: InvoiceListFilters = {}): Prisma.Invoice
       const stored = STORED_STATUS[rawStatus] ?? STORED_STATUS[normalized];
       if (stored) parts.push({ status: stored });
     }
+  }
+
+  if (query.overdue === true) {
+    parts.push(overdueWhere(now));
+  } else if (query.overdue === false) {
+    parts.push({ NOT: overdueWhere(now) });
   }
 
   if (parts.length === 0) return {};

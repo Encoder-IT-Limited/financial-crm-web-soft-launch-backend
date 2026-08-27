@@ -22,10 +22,16 @@ const invoiceListStatusSchema = z.enum([
   "OVERDUE",
 ]);
 
+const overdueQuerySchema = z
+  .enum(["true", "false", "1", "0"])
+  .optional()
+  .transform((value) => (value === undefined ? undefined : value === "true" || value === "1"));
+
 export const listInvoicesQuerySchema = listPageQuerySchema.extend({
   search: z.string().trim().max(100).optional(),
   status: invoiceListStatusSchema.optional(),
   customerId: z.string().uuid().optional(),
+  overdue: overdueQuerySchema,
 });
 
 export const invoiceSummaryQuerySchema = z.object({

@@ -159,7 +159,8 @@ export async function listSalesHandler(req: Request, res: Response, next: NextFu
 export async function getSaleHandler(req: Request, res: Response, next: NextFunction) {
   try {
     const { tenantPrisma } = ctx(req);
-    res.json(await posService.getSale(tenantPrisma, requireUuidParam(req, "id")));
+    const currency = resolveCurrency(req.tenant?.currency);
+    res.json(await posService.getSale(tenantPrisma, requireUuidParam(req, "id"), currency));
   } catch (err) {
     next(err);
   }
@@ -168,7 +169,8 @@ export async function getSaleHandler(req: Request, res: Response, next: NextFunc
 export async function getReceiptHandler(req: Request, res: Response, next: NextFunction) {
   try {
     const { tenantPrisma } = ctx(req);
-    res.json(await posService.getReceipt(tenantPrisma, requireUuidParam(req, "id")));
+    const currency = resolveCurrency(req.tenant?.currency);
+    res.json(await posService.getReceipt(tenantPrisma, requireUuidParam(req, "id"), currency));
   } catch (err) {
     next(err);
   }
