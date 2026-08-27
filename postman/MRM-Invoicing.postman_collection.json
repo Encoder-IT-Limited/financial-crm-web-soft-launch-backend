@@ -44,6 +44,17 @@
           }
         },
         {
+          "name": "List Invoices (search + status + customer)",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/invoices?page=1&pageSize=10&search=INV&status=sent&customerId={{customerId}}"
+          }
+        },
+        {
+          "name": "Invoice Stats",
+          "request": { "method": "GET", "url": "{{baseUrl}}/invoices/stats" }
+        },
+        {
           "name": "Next Invoice Number",
           "request": { "method": "GET", "url": "{{baseUrl}}/invoices/next-number" }
         },

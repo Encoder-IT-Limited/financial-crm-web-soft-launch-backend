@@ -148,6 +148,46 @@ async function main() {
     const getOne = await request(`/invoices/${invoice.id}`, { token });
     record("Invoices", "GET :id includes currency", dataOf(getOne.json)?.currency === "BDT", dataOf(getOne.json)?.currency);
 
+    const byNumber = await request(
+      `/invoices?page=1&pageSize=5&search=${encodeURIComponent(invoice.invoiceNumber)}`,
+      { token },
+    );
+    const byNumberItems = dataOf(byNumber.json) ?? [];
+    const byNumberMeta = byNumber.json?.meta;
+    record(
+      "Invoices",
+      "Search + page filters to matching invoice numbers",
+      byNumber.status < 300 &&
+        Array.isArray(byNumberItems) &&
+        byNumberItems.length >= 1 &&
+        byNumberItems.every((row) => String(row.invoiceNumber).includes(invoice.invoiceNumber)) &&
+        Number(byNumberMeta?.total) >= 1,
+      `${byNumber.status} total=${byNumberMeta?.total} first=${byNumberItems[0]?.invoiceNumber}`,
+    );
+
+    const byCustomer = await request(`/invoices?page=1&pageSize=5&customerId=${customerId}`, { token });
+    const byCustomerItems = dataOf(byCustomer.json) ?? [];
+    record(
+      "Invoices",
+      "customerId filter returns only that customer",
+      byCustomer.status < 300 &&
+        Array.isArray(byCustomerItems) &&
+        byCustomerItems.every((row) => row.customerId === customerId),
+      `${byCustomer.status} count=${byCustomerItems.length}`,
+    );
+
+    const statsRes = await request("/invoices/stats", { token });
+    const stats = dataOf(statsRes.json);
+    record(
+      "Invoices",
+      "Stats returns totals",
+      statsRes.status < 300 &&
+        typeof stats?.total === "number" &&
+        typeof stats?.outstanding === "number" &&
+        typeof stats?.drafts === "number",
+      JSON.stringify(stats),
+    );
+
     const cnNext = await request("/credit-notes/next-number", { token });
     record("Credit notes", "Next number", String(dataOf(cnNext.json)?.number ?? "").startsWith("CN-"), dataOf(cnNext.json)?.number);
 
@@ -168,6 +208,20 @@ async function main() {
       "List includes currency + autoSend",
       Array.isArray(templates) && (templates.length === 0 || "autoSend" in templates[0]),
       templates[0] ? `${templates[0].currency} autoSend=${templates[0].autoSend}` : "empty",
+    );
+
+    const recPage = await request("/recurring-templates?page=1&pageSize=1", { token });
+    const recItems = dataOf(recPage.json) ?? [];
+    const recMeta = recPage.json?.meta;
+    record(
+      "Recurring",
+      "Paged list includes activeCount meta",
+      recPage.status < 300 &&
+        Array.isArray(recItems) &&
+        recItems.length <= 1 &&
+        Number(recMeta?.pageSize) === 1 &&
+        typeof recMeta?.activeCount === "number",
+      JSON.stringify(recMeta),
     );
 
     if (templates[0]?.id) {

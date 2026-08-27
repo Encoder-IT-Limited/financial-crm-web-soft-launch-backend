@@ -7,6 +7,27 @@ export const listPageQuerySchema = z.object({
   offset: z.coerce.number().int().min(0).optional(),
 });
 
+const invoiceListStatusSchema = z.enum([
+  "draft",
+  "DRAFT",
+  "sent",
+  "SENT",
+  "partially-paid",
+  "PARTIALLY_PAID",
+  "paid",
+  "PAID",
+  "cancelled",
+  "CANCELLED",
+  "overdue",
+  "OVERDUE",
+]);
+
+export const listInvoicesQuerySchema = listPageQuerySchema.extend({
+  search: z.string().trim().max(100).optional(),
+  status: invoiceListStatusSchema.optional(),
+  customerId: z.string().uuid().optional(),
+});
+
 export const invoiceItemSchema = z.object({
   productId: z.string().uuid().optional(),
   description: z.string().min(1),

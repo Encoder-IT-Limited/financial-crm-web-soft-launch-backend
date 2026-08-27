@@ -6,6 +6,9 @@ import { parsePageQuery, pageMeta, isPagedQuery, type PageQuery, type PageResult
 import { emitAccountingEvent } from "../accounting/accounting.service";
 import { receiveStockCore, issueStockCore } from "../inventory/inventory.service";
 import { computeInvoiceTotals, isOverdue, lineTotal } from "./invoicing.totals";
+import { invoiceListWhere, overdueWhere, type InvoiceListFilters } from "./invoicing.listWhere";
+
+export { invoiceListWhere, overdueWhere };
 
 export { isOverdue, computeInvoiceTotals };
 
@@ -143,13 +146,26 @@ export async function updateInvoice(
   });
 }
 
-export async function listInvoices(tenantPrisma: PrismaClient, query: PageQuery = {}) {
+export type InvoiceListQuery = PageQuery & InvoiceListFilters;
+
+export async function listInvoices(tenantPrisma: PrismaClient, query: InvoiceListQuery = {}) {
   const { page, pageSize, skip } = parsePageQuery(query);
   const paginate = isPagedQuery(query);
+  const search = query.search?.trim();
+  const matchingCustomerIds = search
+    ? (
+        await tenantPrisma.customer.findMany({
+          where: { name: { contains: search, mode: "insensitive" } },
+          select: { id: true },
+        })
+      ).map((row) => row.id)
+    : undefined;
+  const where = invoiceListWhere({ ...query, search, matchingCustomerIds });
 
   const [total, invoices] = await Promise.all([
-    tenantPrisma.invoice.count(),
+    tenantPrisma.invoice.count({ where }),
     tenantPrisma.invoice.findMany({
+      where,
       include: { items: true },
       orderBy: { createdAt: "desc" },
       ...(paginate ? { skip, take: pageSize } : {}),
@@ -172,6 +188,38 @@ export async function listInvoices(tenantPrisma: PrismaClient, query: PageQuery 
     items,
     meta: pageMeta(total, paginate ? page : 1, paginate ? pageSize : total),
   } satisfies PageResult<(typeof items)[number]>;
+}
+
+function decimalSum(value: { toString(): string } | number | null | undefined): number {
+  if (value == null) return 0;
+  return Number(value);
+}
+
+export async function getInvoiceStats(tenantPrisma: PrismaClient, now = new Date()) {
+  const overdue = overdueWhere(now);
+  const [total, outstanding, overdueAgg, drafts, collected] = await Promise.all([
+    tenantPrisma.invoice.count(),
+    tenantPrisma.invoice.aggregate({
+      _sum: { balanceDue: true },
+      where: { status: { not: "CANCELLED" } },
+    }),
+    tenantPrisma.invoice.aggregate({
+      _sum: { balanceDue: true },
+      where: overdue,
+    }),
+    tenantPrisma.invoice.count({ where: { status: "DRAFT" } }),
+    tenantPrisma.invoice.aggregate({
+      _sum: { paidAmount: true },
+      where: { status: "PAID" },
+    }),
+  ]);
+  return {
+    total,
+    outstanding: decimalSum(outstanding._sum.balanceDue),
+    overdue: decimalSum(overdueAgg._sum.balanceDue),
+    drafts,
+    collected: decimalSum(collected._sum.paidAmount),
+  };
 }
 
 export async function getInvoice(tenantPrisma: PrismaClient, id: string) {
@@ -841,14 +889,27 @@ export function createRecurringTemplate(
 export async function listRecurringTemplates(tenantPrisma: PrismaClient, query: PageQuery = {}) {
   const { page, pageSize, skip } = parsePageQuery(query);
   const paginate = isPagedQuery(query);
-  const [total, items] = await Promise.all([
+  const [total, items, activeCount, nextActive] = await Promise.all([
     tenantPrisma.recurringInvoiceTemplate.count(),
     tenantPrisma.recurringInvoiceTemplate.findMany({
       orderBy: { createdAt: "desc" },
       ...(paginate ? { skip, take: pageSize } : {}),
     }),
+    tenantPrisma.recurringInvoiceTemplate.count({ where: { status: "ACTIVE" } }),
+    tenantPrisma.recurringInvoiceTemplate.findFirst({
+      where: { status: "ACTIVE" },
+      orderBy: { nextInvoiceDate: "asc" },
+      select: { nextInvoiceDate: true },
+    }),
   ]);
-  return { items, meta: pageMeta(total, paginate ? page : 1, paginate ? pageSize : total) };
+  return {
+    items,
+    meta: {
+      ...pageMeta(total, paginate ? page : 1, paginate ? pageSize : total),
+      activeCount,
+      nextInvoiceDate: nextActive?.nextInvoiceDate ?? null,
+    },
+  };
 }
 
 export async function setRecurringTemplateStatus(

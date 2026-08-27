@@ -9,6 +9,7 @@ invoicingRouter.use(authenticate);
 
 invoicingRouter.get("/invoices", c.listInvoicesHandler);
 invoicingRouter.get("/invoices/next-number", c.nextInvoiceNumberHandler);
+invoicingRouter.get("/invoices/stats", c.invoiceStatsHandler);
 invoicingRouter.post("/invoices", requireTenantWritable, c.createInvoiceHandler);
 invoicingRouter.get("/invoices/:id", c.getInvoiceHandler);
 invoicingRouter.patch("/invoices/:id", requireTenantWritable, c.updateInvoiceHandler);

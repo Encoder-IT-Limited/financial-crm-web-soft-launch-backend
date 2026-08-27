@@ -25,7 +25,7 @@ function invoiceJson(req: Request, invoice: Parameters<typeof invoicingService.t
 export async function listInvoicesHandler(req: Request, res: Response, next: NextFunction) {
   try {
     const { tenantPrisma, currency } = ctx(req);
-    const query = v.listPageQuerySchema.parse(req.query);
+    const query = v.listInvoicesQuerySchema.parse(req.query);
     const { items, meta } = await invoicingService.listInvoices(tenantPrisma, query);
     res.json(
       ok(
@@ -33,6 +33,15 @@ export async function listInvoicesHandler(req: Request, res: Response, next: Nex
         meta,
       ),
     );
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function invoiceStatsHandler(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { tenantPrisma } = ctx(req);
+    res.json(ok(await invoicingService.getInvoiceStats(tenantPrisma)));
   } catch (err) {
     next(err);
   }
