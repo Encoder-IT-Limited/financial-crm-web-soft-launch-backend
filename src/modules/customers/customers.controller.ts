@@ -1,8 +1,10 @@
 import type { Request, Response, NextFunction } from "express";
-import { requireParam } from "../../utils/params";
+import { requireParam, requireUuidParam } from "../../utils/params";
 import { requireTenantAuth } from "../../utils/tenantContext";
+import { resolveCurrency } from "../../utils/currency";
 import { createCustomerSchema, updateCustomerSchema } from "./customers.validation";
 import * as customersService from "./customers.service";
+import { getCustomerStatement } from "../invoicing/invoicing.reports";
 
 export async function listCustomersHandler(req: Request, res: Response, next: NextFunction) {
   try {
@@ -16,7 +18,18 @@ export async function listCustomersHandler(req: Request, res: Response, next: Ne
 export async function getCustomerHandler(req: Request, res: Response, next: NextFunction) {
   try {
     const { tenantPrisma } = requireTenantAuth(req);
-    res.json(await customersService.getCustomer(tenantPrisma, requireParam(req, "id")));
+    res.json(await customersService.getCustomer(tenantPrisma, requireUuidParam(req, "id")));
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function getCustomerStatementHandler(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { tenantPrisma, tenant } = requireTenantAuth(req);
+    res.json(
+      await getCustomerStatement(tenantPrisma, requireUuidParam(req, "id"), resolveCurrency(tenant.currency)),
+    );
   } catch (err) {
     next(err);
   }

@@ -18,14 +18,23 @@ export function errorHandler(err: unknown, req: Request, res: Response, _next: N
     );
   }
 
-  if (isUniqueConstraint(err)) {
+  const prismaCode = prismaErrorCode(err);
+  if (prismaCode === "P2002") {
     return res.status(409).json(fail("CONFLICT", "A record with that unique value already exists", undefined, requestId));
+  }
+  if (prismaCode === "P2023") {
+    return res.status(400).json(fail("INVALID_ID", "Invalid identifier", undefined, requestId));
+  }
+  if (prismaCode === "P2025") {
+    return res.status(404).json(fail("NOT_FOUND", "Record not found", undefined, requestId));
   }
 
   logger.error({ err }, "Unhandled error");
   return res.status(500).json(fail("INTERNAL_ERROR", "Something went wrong", undefined, requestId));
 }
 
-function isUniqueConstraint(err: unknown): boolean {
-  return Boolean(err && typeof err === "object" && "code" in err && (err as { code?: string }).code === "P2002");
+function prismaErrorCode(err: unknown): string | undefined {
+  if (!err || typeof err !== "object" || !("code" in err)) return undefined;
+  const code = (err as { code?: unknown }).code;
+  return typeof code === "string" ? code : undefined;
 }

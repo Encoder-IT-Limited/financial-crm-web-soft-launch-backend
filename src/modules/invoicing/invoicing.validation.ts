@@ -28,6 +28,10 @@ export const listInvoicesQuerySchema = listPageQuerySchema.extend({
   customerId: z.string().uuid().optional(),
 });
 
+export const invoiceSummaryQuerySchema = z.object({
+  months: z.coerce.number().int().min(1).max(24).optional().default(12),
+});
+
 export const invoiceItemSchema = z.object({
   productId: z.string().uuid().optional(),
   description: z.string().min(1),

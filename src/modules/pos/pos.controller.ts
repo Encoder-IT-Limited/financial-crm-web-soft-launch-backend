@@ -1,6 +1,6 @@
 import type { Request, Response, NextFunction } from "express";
 import { AppError } from "../../utils/errors";
-import { requireParam } from "../../utils/params";
+import { requireParam, requireUuidParam } from "../../utils/params";
 import { resolveCurrency } from "../../utils/currency";
 import * as v from "./pos.validation";
 import * as posService from "./pos.service";
@@ -159,7 +159,7 @@ export async function listSalesHandler(req: Request, res: Response, next: NextFu
 export async function getSaleHandler(req: Request, res: Response, next: NextFunction) {
   try {
     const { tenantPrisma } = ctx(req);
-    res.json(await posService.getSale(tenantPrisma, requireParam(req, "id")));
+    res.json(await posService.getSale(tenantPrisma, requireUuidParam(req, "id")));
   } catch (err) {
     next(err);
   }
@@ -168,7 +168,7 @@ export async function getSaleHandler(req: Request, res: Response, next: NextFunc
 export async function getReceiptHandler(req: Request, res: Response, next: NextFunction) {
   try {
     const { tenantPrisma } = ctx(req);
-    res.json(await posService.getReceipt(tenantPrisma, requireParam(req, "id")));
+    res.json(await posService.getReceipt(tenantPrisma, requireUuidParam(req, "id")));
   } catch (err) {
     next(err);
   }

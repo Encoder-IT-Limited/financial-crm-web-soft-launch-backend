@@ -1,11 +1,16 @@
 import type { Request, Response, NextFunction } from "express";
 import { AppError } from "../../utils/errors";
-import { requireParam } from "../../utils/params";
+import { requireParam, requireUuidParam } from "../../utils/params";
 import { env } from "../../config/env";
 import { ok } from "../../utils/envelope";
 import { resolveCurrency, withCurrency } from "../../utils/currency";
 import * as v from "./invoicing.validation";
 import * as invoicingService from "./invoicing.service";
+import * as invoicingReports from "./invoicing.reports";
+
+function omitEmptyQuery(query: Request["query"]) {
+  return Object.fromEntries(Object.entries(query).filter(([, value]) => value !== "" && value !== undefined));
+}
 
 function ctx(req: Request) {
   if (!req.tenant || !req.tenantPrisma) throw new AppError(400, "TENANT_REQUIRED", "Tenant subdomain required");
@@ -25,7 +30,7 @@ function invoiceJson(req: Request, invoice: Parameters<typeof invoicingService.t
 export async function listInvoicesHandler(req: Request, res: Response, next: NextFunction) {
   try {
     const { tenantPrisma, currency } = ctx(req);
-    const query = v.listInvoicesQuerySchema.parse(req.query);
+    const query = v.listInvoicesQuerySchema.parse(omitEmptyQuery(req.query));
     const { items, meta } = await invoicingService.listInvoices(tenantPrisma, query);
     res.json(
       ok(
@@ -47,6 +52,16 @@ export async function invoiceStatsHandler(req: Request, res: Response, next: Nex
   }
 }
 
+export async function invoiceSummaryHandler(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { tenantPrisma } = ctx(req);
+    const query = v.invoiceSummaryQuerySchema.parse(omitEmptyQuery(req.query));
+    res.json(ok(await invoicingReports.getInvoiceSummary(tenantPrisma, query.months)));
+  } catch (err) {
+    next(err);
+  }
+}
+
 export async function nextInvoiceNumberHandler(req: Request, res: Response, next: NextFunction) {
   try {
     const { tenantPrisma } = ctx(req);
@@ -59,7 +74,7 @@ export async function nextInvoiceNumberHandler(req: Request, res: Response, next
 export async function getInvoiceHandler(req: Request, res: Response, next: NextFunction) {
   try {
     const { tenantPrisma } = ctx(req);
-    const invoice = await invoicingService.getInvoice(tenantPrisma, requireParam(req, "id"));
+    const invoice = await invoicingService.getInvoice(tenantPrisma, requireUuidParam(req, "id"));
     res.json(invoiceJson(req, invoice));
   } catch (err) {
     next(err);
