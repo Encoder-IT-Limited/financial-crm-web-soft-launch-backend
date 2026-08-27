@@ -4,6 +4,7 @@ import { emitAccountingEvent } from "../accounting/accounting.service";
 import { weightedAverageCost } from "./inventory.costing";
 import { generateBatchNumber } from "./inventory.batch";
 import type { ProductDto, WarehouseDto } from "./inventory.dto";
+import { isLowStock, isUuid, suggestedReorderQuantity } from "./inventory.helpers";
 import type { z } from "zod";
 import type {
   createProductSchema,
@@ -257,20 +258,36 @@ export async function deleteProduct(tenantPrisma: PrismaClient, id: string) {
   return { id, deleted: true };
 }
 
-async function toWarehouseDto(tenantPrisma: PrismaClient, wh: {
-  id: string;
-  name: string;
-  code: string;
-  address: string | null;
-  status: string;
-}): Promise<WarehouseDto> {
+async function toWarehouseDto(
+  tenantPrisma: PrismaClient,
+  wh: {
+    id: string;
+    name: string;
+    code: string;
+    address: string | null;
+    status: string;
+  },
+  opts?: { includeProducts?: boolean },
+): Promise<WarehouseDto> {
+  const includeProducts = opts?.includeProducts === true;
   const balances = await tenantPrisma.stockBalance.findMany({
     where: { warehouseId: wh.id },
-    select: { productId: true, quantity: true },
+    select: {
+      productId: true,
+      quantity: true,
+      damagedQuantity: true,
+      reservedQuantity: true,
+      averageCost: true,
+      ...(includeProducts
+        ? { product: { select: { name: true, sku: true, barcode: true, status: true } } }
+        : {}),
+    },
   });
   const productIds = new Set(balances.filter((b) => Number(b.quantity) !== 0).map((b) => b.productId));
   const totalOnHand = balances.reduce((sum, b) => sum + Number(b.quantity), 0);
-  return {
+  const totalDamaged = balances.reduce((sum, b) => sum + Number(b.damagedQuantity), 0);
+  const totalReserved = balances.reduce((sum, b) => sum + Number(b.reservedQuantity), 0);
+  const dto: WarehouseDto = {
     id: wh.id,
     name: wh.name,
     code: wh.code,
@@ -278,7 +295,33 @@ async function toWarehouseDto(tenantPrisma: PrismaClient, wh: {
     status: wh.status,
     productCount: productIds.size,
     totalOnHand,
+    totalDamaged,
+    totalReserved,
   };
+  if (includeProducts) {
+    dto.products = balances
+      .filter(
+        (b) =>
+          Number(b.quantity) !== 0 ||
+          Number(b.damagedQuantity) !== 0 ||
+          Number(b.reservedQuantity) !== 0,
+      )
+      .map((b) => {
+        const product = "product" in b ? (b.product as { name: string; sku: string; barcode: string | null; status: string }) : null;
+        return {
+          productId: b.productId,
+          name: product?.name ?? "",
+          sku: product?.sku ?? "",
+          barcode: product?.barcode ?? null,
+          status: product?.status ?? "ACTIVE",
+          quantity: Number(b.quantity),
+          damagedQuantity: Number(b.damagedQuantity),
+          reservedQuantity: Number(b.reservedQuantity),
+          averageCost: Number(b.averageCost),
+        };
+      });
+  }
+  return dto;
 }
 
 export async function listWarehouses(tenantPrisma: PrismaClient) {
@@ -693,6 +736,7 @@ interface AdjustStockInput {
   productId: string;
   warehouseId: string;
   quantityDelta: number;
+  note?: string;
   referenceType?: string;
   referenceId?: string;
 }
@@ -733,6 +777,7 @@ export async function adjustStock(
         movementType: "ADJUSTMENT",
         quantity: input.quantityDelta,
         unitCost: currentCost,
+        note: input.note,
         referenceType: input.referenceType,
         referenceId: input.referenceId,
         createdBy: userId,
@@ -864,7 +909,7 @@ export async function getProduct(tenantPrisma: PrismaClient, id: string) {
 export async function getWarehouse(tenantPrisma: PrismaClient, id: string) {
   const row = await tenantPrisma.warehouse.findUnique({ where: { id } });
   if (!row) return null;
-  return toWarehouseDto(tenantPrisma, row);
+  return toWarehouseDto(tenantPrisma, row, { includeProducts: true });
 }
 
 export function listStockBalances(tenantPrisma: PrismaClient, warehouseId?: string) {
@@ -949,8 +994,41 @@ export async function listTransfers(tenantPrisma: PrismaClient, query: TransferL
   };
 
   if (search) {
-    // UUID columns don't support contains/startsWith in Prisma — exact or full-uuid match only.
-    where.id = search;
+    if (isUuid(search)) {
+      where.id = search;
+    } else {
+      const [warehouses, products] = await Promise.all([
+        tenantPrisma.warehouse.findMany({
+          where: {
+            OR: [
+              { name: { contains: search, mode: "insensitive" } },
+              { code: { contains: search, mode: "insensitive" } },
+            ],
+          },
+          select: { id: true },
+        }),
+        tenantPrisma.product.findMany({
+          where: {
+            OR: [
+              { name: { contains: search, mode: "insensitive" } },
+              { sku: { contains: search, mode: "insensitive" } },
+            ],
+          },
+          select: { id: true },
+        }),
+      ]);
+      const warehouseIds = warehouses.map((w) => w.id);
+      const productIds = products.map((p) => p.id);
+      const or: Prisma.StockTransferWhereInput[] = [];
+      if (warehouseIds.length) {
+        or.push({ fromWarehouseId: { in: warehouseIds } });
+        or.push({ toWarehouseId: { in: warehouseIds } });
+      }
+      if (productIds.length) {
+        or.push({ items: { some: { productId: { in: productIds } } } });
+      }
+      where.OR = or.length ? or : [{ id: { in: [] } }];
+    }
   }
 
   const page = query.page;
@@ -992,4 +1070,203 @@ export function listBatches(tenantPrisma: PrismaClient) {
     orderBy: [{ expiryDate: { sort: "asc", nulls: "last" } }, { createdAt: "desc" }],
     take: 500,
   });
+}
+
+const INBOUND_MOVEMENT_TYPES = ["PURCHASE_RECEIPT", "OPENING", "TRANSFER_IN", "SALES_RETURN"] as const;
+
+export async function getDashboard(tenantPrisma: PrismaClient) {
+  const [
+    productCount,
+    warehouseCount,
+    balances,
+    warehouses,
+    adjustmentCount,
+    inboundCount,
+    recent,
+    products,
+  ] = await Promise.all([
+    tenantPrisma.product.count(),
+    tenantPrisma.warehouse.count(),
+    tenantPrisma.stockBalance.findMany({
+      select: {
+        warehouseId: true,
+        quantity: true,
+        damagedQuantity: true,
+        averageCost: true,
+      },
+    }),
+    tenantPrisma.warehouse.findMany({ select: { id: true, name: true }, orderBy: { name: "asc" } }),
+    tenantPrisma.stockMovement.count({ where: { movementType: "ADJUSTMENT" } }),
+    tenantPrisma.stockMovement.count({ where: { movementType: { in: [...INBOUND_MOVEMENT_TYPES] } } }),
+    tenantPrisma.stockMovement.findMany({
+      orderBy: { movementDate: "desc" },
+      take: 10,
+      select: {
+        id: true,
+        movementDate: true,
+        movementType: true,
+        quantity: true,
+        productId: true,
+        warehouseId: true,
+      },
+    }),
+    tenantPrisma.product.findMany({
+      where: { status: "ACTIVE" },
+      select: {
+        id: true,
+        name: true,
+        sku: true,
+        reorderLevel: true,
+        minimumStock: true,
+        stockBalances: { select: { quantity: true } },
+      },
+    }),
+  ]);
+
+  const warehouseName = new Map(warehouses.map((w) => [w.id, w.name]));
+  let stockValue = 0;
+  const byWarehouse = new Map<string, { value: number; onHand: number; damagedOnHand: number }>();
+  for (const row of balances) {
+    const qty = Number(row.quantity);
+    const damaged = Number(row.damagedQuantity);
+    const value = qty * Number(row.averageCost);
+    stockValue += value;
+    const current = byWarehouse.get(row.warehouseId) ?? { value: 0, onHand: 0, damagedOnHand: 0 };
+    current.value += value;
+    current.onHand += qty;
+    current.damagedOnHand += damaged;
+    byWarehouse.set(row.warehouseId, current);
+  }
+
+  const stockValueByWarehouse = [...byWarehouse.entries()]
+    .map(([warehouseId, agg]) => ({
+      warehouseId,
+      name: warehouseName.get(warehouseId) ?? warehouseId.slice(0, 8),
+      value: agg.value,
+      onHand: agg.onHand,
+      damagedOnHand: agg.damagedOnHand,
+    }))
+    .sort((a, b) => b.value - a.value);
+
+  const productNameById = new Map(products.map((p) => [p.id, p.name]));
+  const missingNames = [...new Set(recent.map((m) => m.productId).filter((id) => !productNameById.has(id)))];
+  if (missingNames.length) {
+    const extra = await tenantPrisma.product.findMany({
+      where: { id: { in: missingNames } },
+      select: { id: true, name: true },
+    });
+    for (const p of extra) productNameById.set(p.id, p.name);
+  }
+
+  const lowStock = products
+    .map((p) => {
+      const stock = p.stockBalances.reduce((sum, b) => sum + Number(b.quantity), 0);
+      return {
+        productId: p.id,
+        name: p.name,
+        sku: p.sku,
+        stock,
+        reorderLevel: Number(p.reorderLevel),
+        minimumStock: Number(p.minimumStock),
+      };
+    })
+    .filter((p) => isLowStock("ACTIVE", p.stock, p.reorderLevel, p.minimumStock))
+    .sort((a, b) => a.stock - b.stock)
+    .slice(0, 8);
+
+  return {
+    productCount,
+    warehouseCount,
+    stockValue,
+    adjustmentCount,
+    inboundCount,
+    stockValueByWarehouse,
+    recentMovements: recent.map((m) => ({
+      id: m.id,
+      movementDate: m.movementDate.toISOString(),
+      movementType: m.movementType,
+      quantity: Number(m.quantity),
+      productId: m.productId,
+      productName: productNameById.get(m.productId) ?? null,
+      warehouseId: m.warehouseId,
+    })),
+    lowStock,
+  };
+}
+
+export async function listReorder(tenantPrisma: PrismaClient, warehouseId?: string) {
+  const products = await tenantPrisma.product.findMany({
+    where: { status: "ACTIVE" },
+    select: {
+      id: true,
+      name: true,
+      sku: true,
+      reorderLevel: true,
+      minimumStock: true,
+      maximumStock: true,
+      costPrice: true,
+      stockBalances: {
+        where: warehouseId ? { warehouseId } : undefined,
+        select: { quantity: true },
+      },
+    },
+  });
+
+  return products
+    .map((p) => {
+      const stock = p.stockBalances.reduce((sum, b) => sum + Number(b.quantity), 0);
+      const reorderLevel = Number(p.reorderLevel);
+      const minimumStock = Number(p.minimumStock);
+      return {
+        productId: p.id,
+        name: p.name,
+        sku: p.sku,
+        stock,
+        reorderLevel,
+        minimumStock,
+        maximumStock: Number(p.maximumStock ?? 0),
+        suggestedQuantity: suggestedReorderQuantity(reorderLevel, stock),
+        costPrice: Number(p.costPrice),
+      };
+    })
+    .filter((p) => isLowStock("ACTIVE", p.stock, p.reorderLevel, p.minimumStock))
+    .sort((a, b) => a.stock - b.stock);
+}
+
+export async function getValuation(tenantPrisma: PrismaClient, warehouseId?: string) {
+  const [balances, products, warehouses] = await Promise.all([
+    tenantPrisma.stockBalance.findMany({
+      where: warehouseId ? { warehouseId } : undefined,
+      select: {
+        productId: true,
+        warehouseId: true,
+        quantity: true,
+        averageCost: true,
+      },
+    }),
+    tenantPrisma.product.findMany({ select: { id: true, sku: true, name: true } }),
+    tenantPrisma.warehouse.findMany({ select: { id: true, name: true } }),
+  ]);
+  const productById = new Map(products.map((p) => [p.id, p]));
+  const warehouseById = new Map(warehouses.map((w) => [w.id, w]));
+  const rows = balances
+    .map((b) => {
+      const quantity = Number(b.quantity);
+      const averageCost = Number(b.averageCost);
+      const product = productById.get(b.productId);
+      const warehouse = warehouseById.get(b.warehouseId);
+      return {
+        productId: b.productId,
+        sku: product?.sku ?? b.productId.slice(0, 8),
+        name: product?.name ?? "Unknown product",
+        warehouseId: b.warehouseId,
+        warehouseName: warehouse?.name ?? b.warehouseId.slice(0, 8),
+        quantity,
+        averageCost,
+        value: quantity * averageCost,
+      };
+    })
+    .sort((a, b) => b.value - a.value);
+  const totalValue = rows.reduce((sum, r) => sum + r.value, 0);
+  return { method: "WEIGHTED_AVERAGE" as const, totalValue, rows };
 }

@@ -101,6 +101,7 @@ export const adjustStockSchema = z.object({
   productId: z.string().uuid(),
   warehouseId: z.string().uuid(),
   quantityDelta: z.number().refine((v) => v !== 0, "quantityDelta must not be zero"),
+  note: z.string().trim().max(500).optional(),
   referenceType: z.string().optional(),
   referenceId: z.string().uuid().optional(),
 });

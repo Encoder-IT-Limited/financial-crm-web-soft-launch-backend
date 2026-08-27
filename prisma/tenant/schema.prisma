@@ -232,6 +232,7 @@ model StockMovement {
   unitCost      Decimal           @map("unit_cost") @db.Decimal(14, 4)
   referenceType String?           @map("reference_type")
   referenceId   String?           @map("reference_id") @db.Uuid
+  note          String?
   movementDate  DateTime          @default(now()) @map("movement_date")
   createdBy     String?           @map("created_by") @db.Uuid
 

@@ -4,6 +4,7 @@ import { requireParam } from "../../utils/params";
 import { ok } from "../../utils/envelope";
 import * as v from "./inventory.validation";
 import * as inventoryService from "./inventory.service";
+import { compactQuery } from "./inventory.helpers";
 
 function ctx(req: Request) {
   if (!req.tenant || !req.tenantPrisma) throw new AppError(400, "TENANT_REQUIRED", "Tenant subdomain required");
@@ -240,9 +241,7 @@ export async function getWarehouseHandler(req: Request, res: Response, next: Nex
 export async function listStockHandler(req: Request, res: Response, next: NextFunction) {
   try {
     const { tenantPrisma } = ctx(req);
-    const query = v.listStockQuerySchema.parse(
-      Object.fromEntries(Object.entries(req.query).filter(([, value]) => value !== "" && value !== undefined)),
-    );
+    const query = v.listStockQuerySchema.parse(compactQuery(req.query as Record<string, unknown>));
     res.json(await inventoryService.listStockBalances(tenantPrisma, query.warehouseId));
   } catch (err) {
     next(err);
@@ -252,7 +251,7 @@ export async function listStockHandler(req: Request, res: Response, next: NextFu
 export async function listTransfersHandler(req: Request, res: Response, next: NextFunction) {
   try {
     const { tenantPrisma } = ctx(req);
-    const query = v.listTransfersQuerySchema.parse(req.query);
+    const query = v.listTransfersQuerySchema.parse(compactQuery(req.query as Record<string, unknown>));
     const { items, meta } = await inventoryService.listTransfers(tenantPrisma, query);
     res.json(ok(items, meta));
   } catch (err) {
@@ -284,6 +283,35 @@ export async function listBatchesHandler(req: Request, res: Response, next: Next
   try {
     const { tenantPrisma } = ctx(req);
     res.json(await inventoryService.listBatches(tenantPrisma));
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function getDashboardHandler(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { tenantPrisma } = ctx(req);
+    res.json(await inventoryService.getDashboard(tenantPrisma));
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function listReorderHandler(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { tenantPrisma } = ctx(req);
+    const query = v.listStockQuerySchema.parse(compactQuery(req.query as Record<string, unknown>));
+    res.json(await inventoryService.listReorder(tenantPrisma, query.warehouseId));
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function getValuationHandler(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { tenantPrisma } = ctx(req);
+    const query = v.listStockQuerySchema.parse(compactQuery(req.query as Record<string, unknown>));
+    res.json(await inventoryService.getValuation(tenantPrisma, query.warehouseId));
   } catch (err) {
     next(err);
   }

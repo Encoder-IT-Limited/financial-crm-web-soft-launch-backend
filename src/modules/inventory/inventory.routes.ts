@@ -21,6 +21,10 @@ inventoryRouter.get("/products/:id", c.getProductHandler);
 inventoryRouter.patch("/products/:id", requireTenantWritable, c.updateProductHandler);
 inventoryRouter.delete("/products/:id", requireTenantWritable, c.deleteProductHandler);
 
+inventoryRouter.get("/dashboard", c.getDashboardHandler);
+inventoryRouter.get("/reorder", c.listReorderHandler);
+inventoryRouter.get("/valuation", c.getValuationHandler);
+
 inventoryRouter.get("/warehouses", c.listWarehousesHandler);
 inventoryRouter.post("/warehouses", requireTenantWritable, c.createWarehouseHandler);
 inventoryRouter.get("/warehouses/:id", c.getWarehouseHandler);
