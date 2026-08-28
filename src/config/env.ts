@@ -17,6 +17,9 @@ const envSchema = z.object({
   PLATFORM_ADMIN_EMAIL: z.string().email().optional(),
   PLATFORM_ADMIN_PASSWORD: z.string().min(8).optional(),
   PLATFORM_ADMIN_NAME: z.string().min(1).optional(),
+
+  APP_URL: z.string().url().default("http://localhost:3001"),
+  SMTP_HOST: z.string().optional(),
 });
 
 export const env = envSchema.parse(process.env);

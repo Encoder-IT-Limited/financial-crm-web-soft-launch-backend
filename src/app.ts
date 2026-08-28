@@ -29,6 +29,7 @@ import { proposalsRouter } from "./modules/proposals/proposals.routes";
 import { retainersRouter } from "./modules/retainers/retainers.routes";
 import { procurementRouter } from "./modules/procurement/procurement.routes";
 import { posRouter } from "./modules/pos/pos.routes";
+import { usersRouter } from "./modules/users/users.routes";
 
 export function createApp() {
   const app = express();
@@ -66,6 +67,7 @@ export function createApp() {
 
   v1.use("/platform/tenants", tenantRouter);
   v1.use("/tenant", tenantProfileRouter);
+  v1.use("/users", usersRouter);
   v1.use("/customers", customersRouter);
   v1.use("/inventory", inventoryRouter);
   v1.use(invoicingRouter);

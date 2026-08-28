@@ -19,3 +19,17 @@ export function parseSubdomain(host: string, rootDomain: string): string | null 
 
   return subdomain;
 }
+
+/** True only when the Host is a real tenant subdomain of ROOT_DOMAIN (e.g. acme.yourapp.com). */
+export function hostHasTenantSubdomain(host: string, rootDomain: string): boolean {
+  try {
+    return parseSubdomain(host, rootDomain) !== null;
+  } catch {
+    return false;
+  }
+}
+
+/** Platform routes that must not inherit a tenant (soft-launch default or X-Tenant-Subdomain). */
+export function isPlatformUnscopedPath(path: string): boolean {
+  return /^\/api(?:\/v1)?\/(?:auth\/signup|auth\/invite|auth\/accept-invite|platform\/tenants)\/?$/.test(path);
+}

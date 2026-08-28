@@ -9,6 +9,8 @@ import { toApiTenantStatus } from "../../utils/tenantStatus";
 import { writeAudit } from "../audit/audit.service";
 import { invalidateTenantCache } from "../../middlewares/tenantResolver";
 import type { RequestTenant, RequestUser } from "../../types/express";
+import { usedSeats as countUsedSeats } from "../../utils/seats";
+import { seedSystemRoles, requireSystemRoleId } from "../users/roles.seed";
 
 export interface ProvisionTenantInput {
   name: string;
@@ -71,6 +73,8 @@ export async function provisionTenant(input: ProvisionTenantInput) {
     await migrateTenantSchema(schemaName);
 
     const tenantPrisma = getTenantPrismaClient(schemaName);
+    await seedSystemRoles(tenantPrisma, tenant.id);
+    const ownerRole = await requireSystemRoleId(tenantPrisma, tenant.id, "OWNER");
     const passwordHash = await hashPassword(input.ownerPassword);
     await tenantPrisma.user.create({
       data: {
@@ -79,6 +83,7 @@ export async function provisionTenant(input: ProvisionTenantInput) {
         email: input.ownerEmail,
         passwordHash,
         role: "OWNER",
+        roleId: ownerRole.id,
       },
     });
 
@@ -105,10 +110,6 @@ export async function provisionTenant(input: ProvisionTenantInput) {
   }
 }
 
-function seatRoles() {
-  return ["OWNER", "ADMIN", "MANAGER", "INVENTORY_MANAGER", "SALES_CASHIER"];
-}
-
 export async function toTenantSummary(tenant: {
   id: string;
   name: string;
@@ -131,18 +132,37 @@ export async function toTenantSummary(tenant: {
     orderBy: { startDate: "desc" },
   });
 
-  let users: { id: string; name: string; email: string; role: string; status?: string }[] = [];
+  let users: {
+    id: string;
+    name: string;
+    email: string;
+    role: string;
+    status?: string;
+    assignedRole?: { countsTowardSeats: boolean } | null;
+  }[] = [];
   try {
     const tenantPrisma = getTenantPrismaClient(tenant.schemaName);
     users = await tenantPrisma.user.findMany({
-      select: { id: true, name: true, email: true, role: true, status: true },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        status: true,
+        assignedRole: { select: { countsTowardSeats: true } },
+      },
       orderBy: { createdAt: "asc" },
     });
   } catch {
     users = [];
   }
 
-  const usedSeats = users.filter((u) => u.status === "ACTIVE" && seatRoles().includes(u.role)).length;
+  const usedSeats = countUsedSeats(
+    users.map((u) => ({
+      status: u.status ?? "ACTIVE",
+      countsTowardSeats: u.assignedRole?.countsTowardSeats ?? u.role !== "VIEWER",
+    })),
+  );
   const plan = subscription?.plan;
   const totalSeats = (plan?.baseSeats ?? 0) + tenant.extraSeats;
 

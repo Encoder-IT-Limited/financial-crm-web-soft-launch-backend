@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { parseSubdomain } from "../../src/middlewares/subdomain";
+import {
+  hostHasTenantSubdomain,
+  isPlatformUnscopedPath,
+  parseSubdomain,
+} from "../../src/middlewares/subdomain";
 import { AppError } from "../../src/utils/errors";
 
 describe("parseSubdomain", () => {
@@ -25,5 +29,33 @@ describe("parseSubdomain", () => {
 
   it("accepts hyphenated subdomains", () => {
     expect(parseSubdomain("acme-corp.yourapp.com", "yourapp.com")).toBe("acme-corp");
+  });
+});
+
+describe("hostHasTenantSubdomain", () => {
+  it("is false on the bare root domain", () => {
+    expect(hostHasTenantSubdomain("localhost", "localhost")).toBe(false);
+  });
+
+  it("is true for a tenant subdomain host", () => {
+    expect(hostHasTenantSubdomain("acme.localhost", "localhost")).toBe(true);
+  });
+
+  it("is false for IP hosts used in soft-launch", () => {
+    expect(hostHasTenantSubdomain("127.0.0.1", "localhost")).toBe(false);
+  });
+});
+
+describe("isPlatformUnscopedPath", () => {
+  it("matches signup, invite, and tenant-provision routes", () => {
+    expect(isPlatformUnscopedPath("/api/v1/auth/signup")).toBe(true);
+    expect(isPlatformUnscopedPath("/api/v1/auth/invite")).toBe(true);
+    expect(isPlatformUnscopedPath("/api/v1/auth/accept-invite")).toBe(true);
+    expect(isPlatformUnscopedPath("/api/v1/platform/tenants")).toBe(true);
+  });
+
+  it("does not match tenant-scoped auth routes", () => {
+    expect(isPlatformUnscopedPath("/api/v1/auth/login")).toBe(false);
+    expect(isPlatformUnscopedPath("/api/v1/users")).toBe(false);
   });
 });

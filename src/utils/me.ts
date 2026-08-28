@@ -2,6 +2,7 @@ export type Me = {
   id: string;
   name: string;
   email: string;
+  role?: string;
   realm: "admin" | "tenant";
   permissions: string[];
   tenant?: {

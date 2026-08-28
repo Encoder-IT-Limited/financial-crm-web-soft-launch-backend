@@ -4,7 +4,7 @@ import { publicPrisma } from "../db/publicPrisma";
 import { getTenantPrismaClient } from "../db/tenantClientCache";
 import { env } from "../config/env";
 import { AppError } from "../utils/errors";
-import { parseSubdomain } from "./subdomain";
+import { isPlatformUnscopedPath, parseSubdomain } from "./subdomain";
 import type { RequestTenant } from "../types/express";
 
 const subdomainCache = new LRUCache<string, RequestTenant>({
@@ -86,6 +86,11 @@ function subdomainFromRequest(req: Request): string | null {
 
 export async function tenantResolver(req: Request, _res: Response, next: NextFunction) {
   try {
+    if (isPlatformUnscopedPath(req.path)) {
+      req.tenant = null;
+      return next();
+    }
+
     const subdomain = subdomainFromRequest(req);
     if (subdomain === null) {
       req.tenant = null;

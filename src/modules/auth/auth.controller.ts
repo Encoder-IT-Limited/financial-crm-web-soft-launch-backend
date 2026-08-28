@@ -9,6 +9,8 @@ import { provisionTenant, slugifySubdomain } from "../tenants/tenants.service";
 import { signupSchema } from "../tenants/tenants.validation";
 import * as passwordReset from "./password-reset.service";
 import { toPlanDto, listPlans } from "../plans/plans.service";
+import { env } from "../../config/env";
+import { hostHasTenantSubdomain } from "../../middlewares/subdomain";
 import { getTenantPrismaClient } from "../../db/tenantClientCache";
 import { publicPrisma } from "../../db/publicPrisma";
 
@@ -104,7 +106,7 @@ export async function meHandler(req: Request, res: Response, next: NextFunction)
 
 export async function signupHandler(req: Request, res: Response, next: NextFunction) {
   try {
-    if (req.tenant) {
+    if (hostHasTenantSubdomain(req.hostname, env.ROOT_DOMAIN)) {
       throw new AppError(400, "ROOT_DOMAIN_ONLY", "Signup must be called on the root domain");
     }
     const input = signupSchema.parse(req.body);

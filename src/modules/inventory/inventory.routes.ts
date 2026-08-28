@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { authenticate } from "../../middlewares/authenticate";
 import { requireTenantWritable } from "../../middlewares/requireTenantWritable";
-import { requireRole } from "../../middlewares/requireRole";
+import { requirePermission } from "../../middlewares/requirePermission";
 import * as c from "./inventory.controller";
 
 export const inventoryRouter: Router = Router();
@@ -39,13 +39,13 @@ inventoryRouter.post("/stock/issue", requireTenantWritable, c.issueStockHandler)
 inventoryRouter.post(
   "/stock/adjust",
   requireTenantWritable,
-  requireRole("OWNER", "MANAGER"),
+  requirePermission("inventory.adjust"),
   c.adjustStockHandler,
 );
 inventoryRouter.post(
   "/stock/write-off-damaged",
   requireTenantWritable,
-  requireRole("OWNER", "MANAGER"),
+  requirePermission("inventory.adjust"),
   c.writeOffDamagedHandler,
 );
 
@@ -55,7 +55,7 @@ inventoryRouter.get("/transfers/:id", c.getTransferHandler);
 inventoryRouter.post(
   "/transfers/:id/approve",
   requireTenantWritable,
-  requireRole("OWNER", "MANAGER"),
+  requirePermission("inventory.adjust"),
   c.approveTransferHandler,
 );
 inventoryRouter.post("/transfers/:id/dispatch", requireTenantWritable, c.dispatchTransferHandler);

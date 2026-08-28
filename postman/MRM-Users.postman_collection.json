@@ -1,0 +1,105 @@
+{
+  "info": {
+    "name": "MRM – Users",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:4001/api/v1" },
+    { "key": "accessToken", "value": "" },
+    { "key": "tenantSubdomain", "value": "demo" },
+    { "key": "inviteId", "value": "" },
+    { "key": "acceptToken", "value": "" },
+    { "key": "userId", "value": "" }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "const path = pm.request.url.getPath();",
+          "if (path.includes('/auth/invite') || path.includes('/auth/accept-invite')) return;",
+          "const subdomain = pm.collectionVariables.get('tenantSubdomain') || pm.environment.get('tenantSubdomain');",
+          "if (subdomain) pm.request.headers.upsert({ key: 'X-Tenant-Subdomain', value: subdomain });"
+        ]
+      }
+    }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{accessToken}}" }]
+  },
+  "item": [
+    {
+      "name": "List roles",
+      "request": { "method": "GET", "url": "{{baseUrl}}/users/roles" }
+    },
+    {
+      "name": "List seats",
+      "request": { "method": "GET", "url": "{{baseUrl}}/users/seats" }
+    },
+    {
+      "name": "List users",
+      "request": { "method": "GET", "url": "{{baseUrl}}/users" }
+    },
+    {
+      "name": "Invite user",
+      "event": [{ "listen": "test", "script": { "exec": [
+        "const res = pm.response.json();",
+        "if (res.success && res.data) {",
+        "  pm.collectionVariables.set('userId', res.data.id);",
+        "  if (res.data.inviteId) pm.collectionVariables.set('inviteId', res.data.inviteId);",
+        "  if (res.data.acceptToken) pm.collectionVariables.set('acceptToken', res.data.acceptToken);",
+        "}"
+      ]}}],
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/users/invites",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"Casey Cashier\",\n  \"email\": \"casey@example.com\",\n  \"role\": \"SALES_CASHIER\"\n}"
+        }
+      }
+    },
+    {
+      "name": "Preview invite",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/auth/invite?token={{acceptToken}}"
+      }
+    },
+    {
+      "name": "Accept invite",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/auth/accept-invite",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"token\": \"{{acceptToken}}\",\n  \"password\": \"SecurePass123\"\n}"
+        }
+      }
+    },
+    {
+      "name": "Resend invite",
+      "request": { "method": "POST", "url": "{{baseUrl}}/users/invites/{{inviteId}}/resend" }
+    },
+    {
+      "name": "Cancel invite",
+      "request": { "method": "DELETE", "url": "{{baseUrl}}/users/invites/{{inviteId}}" }
+    },
+    {
+      "name": "Update user",
+      "request": {
+        "method": "PATCH",
+        "url": "{{baseUrl}}/users/{{userId}}",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"role\": \"ACCOUNTANT\"\n}"
+        }
+      }
+    }
+  ]
+}

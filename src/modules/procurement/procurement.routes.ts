@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { authenticate } from "../../middlewares/authenticate";
 import { requireTenantWritable } from "../../middlewares/requireTenantWritable";
-import { requireRole } from "../../middlewares/requireRole";
+import { requirePermission } from "../../middlewares/requirePermission";
 import * as c from "./procurement.controller";
 
 export const procurementRouter: Router = Router();
@@ -18,19 +18,19 @@ procurementRouter.post("/purchase-orders/:id/submit", requireTenantWritable, c.s
 procurementRouter.post(
   "/purchase-orders/:id/approve",
   requireTenantWritable,
-  requireRole("OWNER", "MANAGER"),
+  requirePermission("procurement.approve"),
   c.approvePurchaseOrderHandler,
 );
 procurementRouter.post(
   "/purchase-orders/:id/reject",
   requireTenantWritable,
-  requireRole("OWNER", "MANAGER"),
+  requirePermission("procurement.approve"),
   c.rejectPurchaseOrderHandler,
 );
 procurementRouter.post(
   "/purchase-orders/:id/close",
   requireTenantWritable,
-  requireRole("OWNER", "MANAGER"),
+  requirePermission("procurement.approve"),
   c.closePurchaseOrderHandler,
 );
 procurementRouter.post("/purchase-orders/:id/goods-receipts", requireTenantWritable, c.createGoodsReceiptHandler);

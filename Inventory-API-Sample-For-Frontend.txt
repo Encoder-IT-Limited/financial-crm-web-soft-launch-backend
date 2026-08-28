@@ -1,0 +1,349 @@
+Inventory API sample for frontend (Products / Warehouses / Stock Transfers)
+================================================================================
+Updated: 2026-08-26
+Base URL (VPS): http://147.93.108.61:4001/api/v1
+Prefix: /inventory/...  (NOT bare /products or /stock-transfers)
+
+Auth
+----
+Authorization: Bearer <accessToken>
+X-Tenant-Subdomain: demo
+When calling the VPS by IP, also set Host: 147.93.108.61
+
+Envelope
+--------
+Success: { "success": true, "data": <payload>, "meta"?: { ... } }
+Error:   { "success": false, "error": { "code", "message", "details?" } }
+
+Login (to get token)
+--------------------
+GET  /auth/csrf
+POST /auth/login
+Body: { "email": "owner@demo.local", "password": "SecurePass123" }
+Token: response.data.tokens.accessToken
+
+================================================================================
+PRODUCTS
+================================================================================
+
+List (optional filters + pagination)
+GET /inventory/products
+Query (all optional):
+  search       - name / sku / barcode
+  status       - ACTIVE | INACTIVE
+  categoryId   - uuid
+  barcode      - exact barcode
+  page         - number (if set WITH pageSize → server pagination)
+  pageSize     - 1..100
+
+If page/pageSize omitted → returns ALL products (safe for POS catalog).
+
+Example:
+GET /inventory/products?page=1&pageSize=20&search=usb&status=ACTIVE
+
+Response example:
+{
+  "success": true,
+  "data": [
+    {
+      "id": "...",
+      "sku": "ELEC-001",
+      "barcode": "6281000000012",
+      "name": "USB Cable",
+      "description": "...",
+      "categoryId": "...",
+      "categoryName": "Electronics",
+      "subcategoryName": "Cables",
+      "unitId": "...",
+      "unitName": "Piece",
+      "unitSymbol": "pcs",
+      "costPrice": 2.5,
+      "sellingPrice": 5,
+      "taxRate": 5,
+      "minimumStock": 5,
+      "maximumStock": 100,
+      "reorderLevel": 10,
+      "trackBatch": true,
+      "status": "ACTIVE",
+      "onHand": 12,
+      "damagedOnHand": 0,
+      "createdAt": "..."
+    }
+  ],
+  "meta": { "page": 1, "pageSize": 20, "total": 6 }
+}
+
+Get one
+GET /inventory/products/:id
+
+Create
+POST /inventory/products
+Body example:
+{
+  "sku": "ELEC-001",
+  "barcode": "6281000000012",
+  "name": "USB Cable",
+  "description": "USB-C charging cable",
+  "categoryId": "<uuid>",
+  "unitId": "<uuid>",
+  "costPrice": 2.5,
+  "sellingPrice": 5,
+  "taxRate": 5,
+  "minimumStock": 5,
+  "maximumStock": 100,
+  "reorderLevel": 10,
+  "trackBatch": true,
+  "status": "ACTIVE"
+}
+
+Update
+PATCH /inventory/products/:id
+Body: any subset of create fields (same shape). Example:
+{
+  "name": "USB Cable Updated",
+  "maximumStock": 500,
+  "status": "ACTIVE"
+}
+
+Delete
+DELETE /inventory/products/:id
+Success: { "success": true, "data": { "id": "...", "deleted": true } }
+If product has stock history / sales / transfers:
+  409 PRODUCT_IN_USE → deactivate instead:
+  PATCH /inventory/products/:id  { "status": "INACTIVE" }
+
+Notes for UI columns:
+  name, sku, categoryName, subcategoryName, unitSymbol/unitName,
+  onHand (current stock), minimumStock, maximumStock, status
+
+================================================================================
+WAREHOUSES
+================================================================================
+
+List
+GET /inventory/warehouses
+
+Response item example:
+{
+  "id": "...",
+  "name": "Main",
+  "code": "WH-01",
+  "address": "Dubai",
+  "status": "ACTIVE",
+  "productCount": 2,
+  "totalOnHand": 40,
+  "totalDamaged": 1,
+  "totalReserved": 0
+}
+
+Get one
+GET /inventory/warehouses/:id
+Same warehouse fields as list, plus `products` currently on hand / damaged / reserved
+in that warehouse (rows with all-zero balances are omitted).
+
+{
+  "id": "...",
+  "name": "Main",
+  "code": "WH-01",
+  "address": "Dubai",
+  "status": "ACTIVE",
+  "productCount": 2,
+  "totalOnHand": 40,
+  "totalDamaged": 1,
+  "totalReserved": 0,
+  "products": [
+    {
+      "productId": "...",
+      "name": "USB Cable",
+      "sku": "ELEC-001",
+      "barcode": "6281000000012",
+      "status": "ACTIVE",
+      "quantity": 12,
+      "damagedQuantity": 1,
+      "reservedQuantity": 0,
+      "averageCost": 2.5
+    }
+  ]
+}
+
+Warehouse has no dedicated contact field — location is `address`.
+
+Create
+POST /inventory/warehouses
+{
+  "name": "Main Warehouse",
+  "code": "WH-01",
+  "address": "Dubai",
+  "status": "ACTIVE"
+}
+
+Update
+PATCH /inventory/warehouses/:id
+{
+  "name": "Main Warehouse",
+  "code": "WH-01",
+  "address": "Dubai Marina",
+  "status": "ACTIVE"
+}
+status: ACTIVE | INACTIVE
+
+Delete
+DELETE /inventory/warehouses/:id
+Success: { "id", "deleted": true }
+409 if:
+  WAREHOUSE_HAS_STOCK
+  WAREHOUSE_HAS_TRANSFERS (open PENDING/APPROVED/DISPATCHED)
+  WAREHOUSE_IN_USE (has movement history) → set status INACTIVE instead
+
+UI columns: name, code, address (location), status, productCount, totalOnHand
+
+================================================================================
+STOCK TRANSFERS
+================================================================================
+
+List (filterable + paginated)
+GET /inventory/transfers
+
+Query:
+  sourceWarehouse       OR fromWarehouseId      - uuid
+  destinationWarehouse  OR toWarehouseId        - uuid
+  status                - PENDING | APPROVED | DISPATCHED | RECEIVED | CANCELLED
+  dateFrom              - ISO 8601
+  dateTo                - ISO 8601
+  search                - UUID → exact transfer id; otherwise warehouse name/code or product sku/name
+  page                  - default behaviour: omit page+pageSize → all rows
+  pageSize              - 1..100 (use with page for server pagination)
+
+Example:
+GET /inventory/transfers?sourceWarehouse=<uuid>&status=PENDING&page=1&pageSize=20&dateFrom=2026-01-01T00:00:00.000Z&dateTo=2026-12-31T23:59:59.999Z
+
+Response example:
+{
+  "success": true,
+  "data": [
+    {
+      "id": "...",
+      "fromWarehouseId": "...",
+      "toWarehouseId": "...",
+      "fromWarehouseName": "Main",
+      "toWarehouseName": "Store",
+      "fromWarehouseCode": "WH-01",
+      "toWarehouseCode": "WH-02",
+      "status": "PENDING",
+      "requestedBy": "<user-uuid>",
+      "createdBy": "Demo Owner",
+      "approvedBy": null,
+      "dispatchedAt": null,
+      "receivedAt": null,
+      "createdAt": "...",
+      "itemCount": 1,
+      "items": [
+        {
+          "id": "...",
+          "productId": "...",
+          "productName": "USB Cable",
+          "productSku": "ELEC-001",
+          "quantity": 10,
+          "unitCost": 0
+        }
+      ]
+    }
+  ],
+  "meta": { "page": 1, "pageSize": 20, "total": 4 }
+}
+
+Get one
+GET /inventory/transfers/:id
+
+Create
+POST /inventory/transfers
+{
+  "fromWarehouseId": "<uuid>",
+  "toWarehouseId": "<uuid>",
+  "items": [{ "productId": "<uuid>", "quantity": 10 }]
+}
+
+Lifecycle (unchanged)
+POST /inventory/transfers/:id/approve
+POST /inventory/transfers/:id/dispatch
+POST /inventory/transfers/:id/receive
+
+UI list columns: reference (id), source, destination, date, itemCount, status, createdBy
+Reset page to 1 when filters change; keep filters in URL query string.
+
+================================================================================
+RELATED LOOKUPS (already exist)
+================================================================================
+GET  /inventory/categories
+GET  /inventory/units
+GET  /inventory/stock
+POST /inventory/stock/receive
+POST /inventory/stock/adjust
+Body: { productId, warehouseId, quantityDelta, note? }
+`note` is optional (max 500 chars) and stored on the ADJUSTMENT movement.
+
+================================================================================
+DASHBOARD / REORDER / VALUATION
+================================================================================
+
+GET /inventory/dashboard
+{
+  "productCount": 12,
+  "warehouseCount": 3,
+  "stockValue": 1040.5,
+  "adjustmentCount": 4,
+  "inboundCount": 9,
+  "stockValueByWarehouse": [
+    { "warehouseId": "...", "name": "Main", "value": 800, "onHand": 40, "damagedOnHand": 1 }
+  ],
+  "recentMovements": [
+    {
+      "id": "...",
+      "movementDate": "...",
+      "movementType": "ADJUSTMENT",
+      "quantity": -2,
+      "productId": "...",
+      "productName": "USB Cable",
+      "warehouseId": "..."
+    }
+  ],
+  "lowStock": [
+    { "productId": "...", "name": "USB Cable", "sku": "ELEC-001", "stock": 3, "reorderLevel": 10, "minimumStock": 5 }
+  ]
+}
+
+GET /inventory/reorder
+Query: warehouseId?  (uuid — scopes on-hand to that warehouse)
+Low-stock rule: ACTIVE and onHand <= max(reorderLevel, minimumStock)
+suggestedQuantity = max(1, reorderLevel * 2 - stock)
+
+GET /inventory/valuation
+Query: warehouseId?  (uuid)
+{
+  "method": "WEIGHTED_AVERAGE",
+  "totalValue": 1040.5,
+  "rows": [
+    {
+      "productId": "...",
+      "sku": "ELEC-001",
+      "name": "USB Cable",
+      "warehouseId": "...",
+      "warehouseName": "Main",
+      "quantity": 12,
+      "averageCost": 2.5,
+      "value": 30
+    }
+  ]
+}
+
+================================================================================
+DASHBOARD ROUTES (already wired on FE branch)
+================================================================================
+/dashboard/products
+/dashboard/products/:productId
+/dashboard/warehouses
+/dashboard/stock-transfer
+
+FE branch: dev-integration
+FE commit: 77550fe feat(inventory): wire product/warehouse CRUD and transfer filters.
+BE commit: c6093f7 Add inventory product/warehouse delete-update and transfer list filters.

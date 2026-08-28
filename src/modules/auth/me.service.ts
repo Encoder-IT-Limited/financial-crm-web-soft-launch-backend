@@ -1,7 +1,8 @@
 import type { Request } from "express";
 import { publicPrisma } from "../../db/publicPrisma";
 import type { Me } from "../../utils/me";
-import { ROLE_PERMISSIONS } from "../../utils/permissions";
+import { defaultGrantsForRole } from "../../utils/permissions";
+import { resolveRoleGrants } from "../../utils/roleGrants";
 
 export async function buildMe(req: Request): Promise<Me> {
   if (!req.user) throw new Error("buildMe called without req.user");
@@ -11,6 +12,7 @@ export async function buildMe(req: Request): Promise<Me> {
       id: req.user.id,
       name: req.user.name ?? req.user.email,
       email: req.user.email,
+      role: req.user.role,
       realm: "admin",
       permissions: ["*"],
     };
@@ -29,8 +31,12 @@ export async function buildMe(req: Request): Promise<Me> {
     id: req.user.id,
     name: req.user.name ?? req.user.email,
     email: req.user.email,
+    role: req.user.role,
     realm: "tenant",
-    permissions: ROLE_PERMISSIONS[req.user.role] ?? ["*.view"],
+    permissions:
+      req.tenantPrisma && req.tenant
+        ? await resolveRoleGrants(req.tenantPrisma, req.tenant.id, req.user.role)
+        : defaultGrantsForRole(req.user.role),
     tenant: tenant
       ? {
           id: tenant.id,

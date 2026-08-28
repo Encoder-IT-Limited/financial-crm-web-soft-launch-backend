@@ -12,6 +12,7 @@ import {
   resetPasswordHandler,
   verifyOtpHandler,
 } from "./auth.controller";
+import { acceptInviteHandler, previewInviteHandler } from "../users/users.controller";
 
 export const authRouter: Router = Router();
 
@@ -20,6 +21,8 @@ authRouter.post("/login", loginHandler);
 authRouter.post("/logout", logoutHandler);
 authRouter.post("/refresh", refreshHandler);
 authRouter.post("/signup", signupHandler);
+authRouter.get("/invite", previewInviteHandler);
+authRouter.post("/accept-invite", acceptInviteHandler);
 authRouter.post("/forgot-password", forgotPasswordHandler);
 authRouter.post("/verify-otp", verifyOtpHandler);
 authRouter.post("/reset-password", resetPasswordHandler);

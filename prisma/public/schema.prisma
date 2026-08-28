@@ -39,6 +39,7 @@ model Tenant {
   subscriptions Subscription[]
   payments      PlatformPayment[]
   auditLogs     PlatformAuditLog[]
+  invites       UserInvite[]
 
   @@map("tenants")
 }
@@ -192,4 +193,26 @@ model PasswordResetToken {
 
   @@index([email])
   @@map("password_reset_tokens")
+}
+
+model UserInvite {
+  id         String    @id @default(uuid()) @db.Uuid
+  tenantId   String    @map("tenant_id") @db.Uuid
+  userId     String    @map("user_id") @db.Uuid
+  email      String
+  name       String
+  role       String
+  tokenHash  String    @unique @map("token_hash")
+  expiresAt  DateTime  @map("expires_at")
+  acceptedAt DateTime? @map("accepted_at")
+  invitedBy  String    @map("invited_by") @db.Uuid
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId])
+  @@index([userId])
+  @@index([email])
+  @@map("user_invites")
 }

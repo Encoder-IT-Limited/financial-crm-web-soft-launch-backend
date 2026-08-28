@@ -17,21 +17,25 @@ datasource db {
 enum UserStatus {
   ACTIVE
   DISABLED
+  INVITED
 }
 
-// Fixed set of predefined roles for Phase 1 (docs/requirements-qa.md "Roles &
-// Permissions") — no tenant-defined custom roles/permission matrix yet.
-// MANAGER exists specifically because several approval workflows (PO
-// approval, inventory adjustments, stock transfers) are scoped to
-// "Owner / Manager" in the Q&A.
-enum Role {
-  OWNER
-  ADMIN
-  MANAGER
-  INVENTORY_MANAGER
-  SALES_CASHIER
-  ACCOUNTANT
-  VIEWER
+model Role {
+  id                 String   @id @default(uuid()) @db.Uuid
+  tenantId           String   @map("tenant_id") @db.Uuid
+  key                String
+  name               String
+  description        String?
+  isSystem           Boolean  @default(false) @map("is_system")
+  countsTowardSeats  Boolean  @default(true) @map("counts_toward_seats")
+  permissions        String[]
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  users User[]
+
+  @@unique([tenantId, key])
+  @@map("roles")
 }
 
 model User {
@@ -42,12 +46,14 @@ model User {
   phone        String?
   passwordHash   String     @map("password_hash")
   managerPinHash String?    @map("manager_pin_hash")
-  role           Role       @default(OWNER)
+  role           String     @default("OWNER")
+  roleId         String     @map("role_id") @db.Uuid
   status       UserStatus @default(ACTIVE)
   lastLoginAt  DateTime?  @map("last_login_at")
   createdAt    DateTime   @default(now()) @map("created_at")
   updatedAt    DateTime   @updatedAt @map("updated_at")
 
+  assignedRole  Role           @relation(fields: [roleId], references: [id])
   refreshTokens RefreshToken[]
 
   @@map("users")
